@@ -221,13 +221,16 @@ function loadSessionTitles(force) {
         }
         dbHandle = new DatabaseSync(CONFIG.dbFile, { readOnly: true });
         const rows = dbHandle
-            .prepare('SELECT id, title, custom_title, status FROM sessions')
+            .prepare('SELECT id, title, custom_title, status, model FROM sessions')
             .all();
         sessionTitles = new Map();
         rows.forEach((r) => {
             const name = r.title || r.custom_title;
             if (name && name.trim()) {
-                sessionTitles.set(r.id, { title: name.trim(), status: r.status });
+                sessionTitles.set(r.id, { title: name.trim(), status: r.status, model: r.model || null });
+            } else {
+                // 无标题的会话也记录 model，保证模型切换功能能看到所有会话
+                sessionTitles.set(r.id, { title: '', status: r.status, model: r.model || null });
             }
         });
         lastTitleLoadAt = now;
@@ -246,9 +249,9 @@ function getSessionInfo(taskId) {
     const sessionId = String(taskId).split('/')[0];
     const info = sessionTitles.get(sessionId);
     if (!info) {
-        return { title: '', mappedStatus: null };
+        return { title: '', mappedStatus: null, model: null };
     }
-    return { title: info.title, mappedStatus: mapSessionStatus(info.status) };
+    return { title: info.title, mappedStatus: mapSessionStatus(info.status), model: info.model || null };
 }
 
 /**
@@ -398,6 +401,7 @@ function scanTasks() {
                         activeForm: taskData.activeForm || '',
                         description: taskData.description || '',
                         status: status,
+                        model: sessionInfo.model || null,
                         createdAt: taskData.createdAt || Date.now(),
                         updatedAt: taskData.updatedAt || Date.now(),
                     };
@@ -452,6 +456,89 @@ function broadcastTasks(wss) {
 
 // 离线待投递的选择请求（手机不在线时缓存，重连后补推）
 const _pendingSelections = [];
+
+// ============================================================
+// 模型清单（会话模型切换用）
+// ============================================================
+
+let _modelCatalog = null;
+let _modelCatalogAt = 0;
+const MODEL_CATALOG_TTL = 5 * 60 * 1000;
+
+/**
+ * 汇总可用模型清单：
+ * ① WorkBuddy 产品配置缓存里的内置模型（acc-product-config-v3-*.json 的 .models[]）
+ * ② 用户自定义模型（~/.workbuddy/models.json，会话里以 custom-local:<id> 形式存储）
+ * ③ 数据库里出现过但不在上面两个清单里的别名（如 fast-model / hy4flash-free）
+ */
+function getModelCatalog() {
+    const now = Date.now();
+    if (_modelCatalog && (now - _modelCatalogAt) < MODEL_CATALOG_TTL) {
+        return _modelCatalog;
+    }
+    const models = [];
+    const seen = new Set();
+    const push = (id, name, credits, custom) => {
+        if (!id || seen.has(id)) return;
+        seen.add(id);
+        models.push({ id, name: name || id, credits: credits || '', custom: !!custom });
+    };
+
+    // ① 内置模型（产品配置缓存，取最新的一个文件）
+    try {
+        const cacheDir = path.join(os.homedir(), '.workbuddy', 'cache');
+        const cfgFiles = fs.readdirSync(cacheDir)
+            .filter(f => /^acc-product-config-v3-.*\.json$/.test(f))
+            .map(f => ({ f, m: fs.statSync(path.join(cacheDir, f)).mtimeMs }))
+            .sort((a, b) => b.m - a.m);
+        if (cfgFiles.length) {
+            const cfg = JSON.parse(fs.readFileSync(path.join(cacheDir, cfgFiles[0].f), 'utf8'));
+            const list = Array.isArray(cfg.models) ? cfg.models : [];
+            for (const m of list) {
+                if (!m || !m.id) continue;
+                // 跳过内部补全/ rewriting 用的小模型（maxOutputTokens<=256 且名字带 codewise/completion）
+                if (/codewise|completion|rewrite/i.test(m.id) && (m.maxOutputTokens || 0) <= 256) continue;
+                // WorkBuddy 会把用户自定义模型同步进产品配置（custom-local: 前缀），顺手打上标记
+                push(m.id, m.name, m.credits, /^custom-local:/.test(m.id));
+            }
+        }
+    } catch (e) { console.error('[Models] 内置清单读取失败:', e.message); }
+
+    // ② 自定义模型
+    try {
+        const customFile = path.join(os.homedir(), '.workbuddy', 'models.json');
+        if (fs.existsSync(customFile)) {
+            const custom = JSON.parse(fs.readFileSync(customFile, 'utf8'));
+            for (const m of Array.isArray(custom) ? custom : []) {
+                if (m && m.id) push('custom-local:' + m.id, '自定义 · ' + (m.name || m.id), '', true);
+            }
+        }
+    } catch (e) { console.error('[Models] 自定义清单读取失败:', e.message); }
+
+    // ③ 数据库里出现过的别名（清单外的存量值也要能选回来）
+    try {
+        for (const info of sessionTitles.values()) {
+            if (info.model && !seen.has(info.model)) {
+                push(info.model, info.model + '（历史值）', '', false);
+            }
+        }
+    } catch (e) { /* ignore */ }
+
+    // Default / Auto 排最前
+    models.sort((a, b) => {
+        const rank = (x) => (x.id === 'default' ? 0 : x.id === 'auto' ? 1 : 2);
+        return rank(a) - rank(b);
+    });
+    _modelCatalog = models;
+    _modelCatalogAt = now;
+    return models;
+}
+
+/** 会话当前使用的模型名（给切换结果提示用） */
+function getSessionModel(sessionId) {
+    const info = sessionTitles.get(sessionId);
+    return (info && info.model) || null;
+}
 
 /**
  * 向订阅了指定任务的客户端推送选择请求
@@ -817,6 +904,40 @@ async function handleCommand(ws, data) {
                 command);
             break;
         }
+        case 'select_model': {
+            // ★ 切换任务（会话）使用的模型：ACP session/set_model
+            const modelId = params?.modelId || '';
+            if (!modelId) {
+                response.success = false;
+                response.message = '缺少 modelId';
+                break;
+            }
+            const info = getSessionInfo(taskId);
+            const sidInfo = wbAcp.taskIdToSession(taskId, CONFIG.projectsDir);
+            const targetNote = info.title ? `「${info.title}」` : (taskId ? String(taskId).slice(0, 8) : '目标会话');
+            const prevModel = sidInfo.sessionId ? getSessionModel(sidInfo.sessionId) : null;
+            console.log('[Model] 收到切换指令:', targetNote, prevModel || '(无)', '→', modelId);
+            asyncControl(ws, response,
+                { message: `已收到模型切换指令，正在应用到 ${targetNote}…`, phase: 'accepted' },
+                async () => {
+                    const cwd = sidInfo.sessionId
+                        ? require('path').dirname(
+                            require('./wb_jsonl_writer').findConversationFile(sidInfo.sessionId, CONFIG.projectsDir) || '.')
+                        : undefined;
+                    const r = await wbControl.setSessionModel(sidInfo.sessionId, modelId, { cwd });
+                    if (!r.ok) {
+                        return { ok: false, message: '❌ 模型切换失败: ' + (r.reason || '未知原因') };
+                    }
+                    return {
+                        ok: true,
+                        message: `✅ ${targetNote} 模型已切换：${prevModel || '（未设置）'} → ${modelId}（下一轮对话生效）`,
+                        channel: r.channel,
+                        detail: r.raw || null,
+                    };
+                },
+                command);
+            break;
+        }
         default:
             response.success = false;
             response.message = '未知指令: ' + command;
@@ -870,6 +991,14 @@ const server = http.createServer((req, res) => {
         const tasks = scanTasks();
         res.writeHead(200);
         res.end(JSON.stringify({ tasks: tasks }));
+        return;
+    }
+
+    // GET /models - 可用模型清单（任务模型切换用）
+    if (req.method === 'GET' && req.url === '/models') {
+        scanTasks(); // 顺带刷新会话标题/模型映射
+        res.writeHead(200);
+        res.end(JSON.stringify({ models: getModelCatalog() }));
         return;
     }
 

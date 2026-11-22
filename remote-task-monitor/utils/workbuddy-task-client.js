@@ -10,7 +10,7 @@
 
 const VALID_STATUSES = ['pending', 'in_progress', 'completed', 'failed'];
 const DEFAULT_STATUS = 'pending';
-const VALID_COMMANDS = ['pause', 'resume', 'cancel', 'retry', 'send_message', 'select_option'];
+const VALID_COMMANDS = ['pause', 'resume', 'cancel', 'retry', 'send_message', 'select_option', 'select_model'];
 
 // ============================================================
 // 全局连接状态（单例）
@@ -568,6 +568,57 @@ function fetchTasks(options) {
 }
 
 // ============================================================
+// 模型清单获取（HTTP）
+// ============================================================
+
+/**
+ * 获取服务端的可用模型清单（用于任务模型切换）
+ * @param {Object} options - { endpoint, token }，省略则用当前连接配置或本地保存的配置
+ * @returns {Promise<{data: Array<{id,name,credits,custom}>|null, error: Object|null}>}
+ */
+function fetchModels(options) {
+    const saved = loadConfig();
+    const endpoint = (options && options.endpoint) || state.endpoint || (saved && saved.endpoint);
+    const token = (options && options.token) || state.token || (saved && saved.token) || '';
+
+    if (!endpoint) {
+        return Promise.resolve({
+            data: null,
+            error: { code: 'INVALID_ENDPOINT', message: '缺少 endpoint' },
+        });
+    }
+
+    const httpBase = endpoint
+        .replace(/^ws:\/\//, 'http://')
+        .replace(/^wss:\/\//, 'https://')
+        .replace(/\/ws$/, '');
+
+    return new Promise((resolve) => {
+        wx.request({
+            url: httpBase + '/models',
+            method: 'GET',
+            timeout: 8000,
+            header: token ? { Authorization: 'Bearer ' + token } : {},
+            success: (res) => {
+                if (res.statusCode === 200 && res.data && Array.isArray(res.data.models)) {
+                    resolve({ data: res.data.models, error: null });
+                } else if (res.statusCode === 401) {
+                    resolve({ data: null, error: { code: 'UNAUTHORIZED', message: 'Token 无效' } });
+                } else {
+                    resolve({ data: null, error: { code: 'HTTP_ERROR', message: 'HTTP ' + res.statusCode } });
+                }
+            },
+            fail: (err) => {
+                resolve({
+                    data: null,
+                    error: { code: 'REQUEST_FAILED', message: (err && err.errMsg) || '请求失败' },
+                });
+            },
+        });
+    });
+}
+
+// ============================================================
 // 对话内容获取（HTTP）
 // ============================================================
 
@@ -815,6 +866,8 @@ function fromWorkBuddyTask(task) {
         createdAt: created,
         updatedAt: updated,
         updatedText: formatTime(updated),
+        // 会话当前使用的模型（模型切换功能展示/回显用）
+        model: typeof task.model === 'string' ? task.model : '',
     };
 }
 
@@ -896,6 +949,7 @@ module.exports = {
     onStatusChange,
     sendCommand,
     fetchTasks,
+    fetchModels,
     fetchConversation,
     fromWorkBuddyTask,
     loadConfig,

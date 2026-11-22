@@ -30,6 +30,56 @@ const CONTROL_TEXT = {
 };
 
 /**
+ * ★ 切换会话模型（ACP `session/set_model`，2026-11-22 网关实证可用）。
+ *   参数 { sessionId, modelId }，返回 { modelId } 并广播 session/update
+ *   （sessionUpdate: config_option_update），下一轮对话即用新模型。
+ * 路由：
+ *   - 活跃会话（有专属网关）：直接在专属网关上 set_model（桌面端已加载会话，无需 load）
+ *   - 空闲会话：通用网关 load 后 set_model
+ * @returns { ok, channel, reason?, raw? }
+ */
+async function setSessionModel(sessionId, modelId, opts = {}) {
+    const sid = String(sessionId || '');
+    if (!sid || !modelId) return { ok: false, reason: 'bad-params' };
+    const gwBase = await bridge.discoverGateway();
+    if (!gwBase) return { ok: false, reason: 'no-gateway-password' };
+
+    const port = activity.getSessionPort(sid);
+    // 1) 活跃会话 → 专属网关直接切
+    if (port) {
+        const gw = { port: port.port, password: gwBase.password, pid: null };
+        try {
+            const conn = await bridge.acpConnect(gw);
+            const r = await bridge.acpRpc(gw, conn.connectionId, 41, 'session/set_model',
+                { sessionId: sid, modelId }, 10000);
+            if (r.rpc && !r.rpc.error) {
+                return { ok: true, channel: 'dedicated-gateway', raw: r.rpc.result };
+            }
+            console.log('[Model] 专属网关 set_model 失败:',
+                JSON.stringify((r.rpc && r.rpc.error) || {}).slice(0, 150), '→ 回退通用网关');
+        } catch (e) {
+            console.log('[Model] 专属网关异常:', e.message, '→ 回退通用网关');
+        }
+    }
+    // 2) 空闲会话 → 通用网关（load 后切；load 失败也照样尝试）
+    try {
+        const conn = await bridge.acpConnect(gwBase);
+        const loaded = await bridge.loadSession(gwBase, conn.connectionId, sid, opts.cwd);
+        if (!loaded.ok) {
+            console.log('[Model] session/load 失败(仍尝试 set_model):', String(loaded.error).slice(0, 120));
+        }
+        const r = await bridge.acpRpc(gwBase, conn.connectionId, 42, 'session/set_model',
+            { sessionId: sid, modelId }, 10000);
+        if (r.rpc && r.rpc.error) {
+            return { ok: false, reason: 'rpc-error: ' + JSON.stringify(r.rpc.error).slice(0, 200) };
+        }
+        return { ok: true, channel: port ? 'generic-gateway' : 'generic-gateway-loaded', raw: r.rpc.result };
+    } catch (e) {
+        return { ok: false, reason: 'exception: ' + e.message };
+    }
+}
+
+/**
  * 向【活跃会话】注入 steer 指令。
  * @returns { ok, steered, reason, channel:'steer', port } —— steered=false 时调用方应回退
  */
@@ -196,7 +246,7 @@ async function deliverControl(sessionId, text, projectsDir, successLabel) {
         : { ok: false, error: r.error, channel: 'acp', steerReason: st.reason };
 }
 
-module.exports = { steerTo, answerQuestion, controlAction, lastUserText, deliverControl, CONTROL_TEXT };
+module.exports = { steerTo, answerQuestion, controlAction, lastUserText, deliverControl, setSessionModel, CONTROL_TEXT };
 
 if (require.main === module) {
     const [, , sid, action, ...rest] = process.argv;

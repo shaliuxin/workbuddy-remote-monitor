@@ -4,6 +4,7 @@ const {
     subscribeTasks,
     sendCommand,
     fetchTasks,
+    fetchModels,
     fetchConversation,
     loadConfig,
     saveConfig,
@@ -60,6 +61,18 @@ Page({
         convTime: '',          // 格式化时间
         convError: '',         // 加载失败的错误信息
 
+        // 模型选择面板（每个任务切换所用模型）
+        modelPanelOpen: false,
+        modelPanelTaskId: '',
+        modelPanelTaskTitle: '',
+        modelPanelCurrent: '',   // 该任务当前模型
+        models: [],              // 服务端可用模型清单
+        modelsLoading: false,
+        modelsError: '',
+        modelKeyword: '',        // 模型筛选关键字
+        visibleModels: [],       // 筛选后的模型
+        switchingModel: false,
+
         // 服务器列表
         servers: [],
         activeServerId: '',
@@ -80,6 +93,18 @@ Page({
         this.offCommandResult = onCommandResponse((msg) => {
             if (msg.command === 'send_message' && msg.message) {
                 this.setData({ commandResult: msg.message });
+            }
+            // 模型切换的最终结果：toast 提示 + 关闭面板 + 刷新任务（服务端会推送新 model 字段）
+            if (msg.command === 'select_model') {
+                wx.showToast({
+                    title: (msg.message || '').slice(0, 40) || (msg.success ? '切换成功' : '切换失败'),
+                    icon: 'none',
+                    duration: 3000,
+                });
+                if (msg.success) {
+                    this.setData({ modelPanelOpen: false });
+                    this.fetchInitialTasks && this.fetchInitialTasks();
+                }
             }
         });
         this.bootstrap();
@@ -419,6 +444,115 @@ Page({
             servers: loadServers(),
         });
         await this.bootstrap();
+    },
+
+    // ============================================================
+    // 模型选择面板（每个任务切换所用模型）
+    // ============================================================
+
+    /** 打开模型面板：拉取模型清单（有缓存则不重复请求） */
+    async openModelPanel(event) {
+        const taskId = event.currentTarget.dataset.id;
+        const task = this.findTaskById(taskId);
+        if (!task) {
+            return;
+        }
+        this.setData({
+            modelPanelOpen: true,
+            modelPanelTaskId: task.id,
+            modelPanelTaskTitle: task.title,
+            modelPanelCurrent: task.model || '',
+            modelsError: '',
+        });
+
+        if (this.data.models.length > 0) {
+            this.applyModelFilter();
+            return;
+        }
+        await this.loadModels();
+    },
+
+    async loadModels() {
+        if (this.data.modelsLoading) {
+            return;
+        }
+        this.setData({ modelsLoading: true, modelsError: '' });
+        const { data, error } = await fetchModels();
+        if (error || !data) {
+            this.setData({
+                modelsLoading: false,
+                modelsError: (error && error.message) || '获取模型清单失败',
+            });
+            return;
+        }
+        this.setData({ models: data, modelsLoading: false });
+        this.applyModelFilter();
+    },
+
+    closeModelPanel() {
+        if (this.data.switchingModel) {
+            return;
+        }
+        this.setData({ modelPanelOpen: false });
+    },
+
+    handleModelKeyword(event) {
+        this.setData({ modelKeyword: event.detail.value || '' });
+        this.applyModelFilter();
+    },
+
+    applyModelFilter() {
+        const kw = (this.data.modelKeyword || '').trim().toLowerCase();
+        const current = this.data.modelPanelCurrent;
+        const list = (this.data.models || []).filter((m) => {
+            if (kw && (m.id || '').toLowerCase().indexOf(kw) === -1 && (m.name || '').toLowerCase().indexOf(kw) === -1) {
+                return false;
+            }
+            return true;
+        });
+        // 当前使用的模型排最前
+        list.sort((a, b) => {
+            const ra = a.id === current ? 0 : 1;
+            const rb = b.id === current ? 0 : 1;
+            return ra - rb;
+        });
+        this.setData({ visibleModels: list });
+    },
+
+    /** 点选模型：下发 select_model 指令 */
+    async handlePickModel(event) {
+        if (this.data.switchingModel) {
+            return;
+        }
+        const modelId = event.currentTarget.dataset.modelid;
+        const taskId = this.data.modelPanelTaskId;
+        if (!modelId || !taskId) {
+            return;
+        }
+        this.setData({ switchingModel: true });
+        const { data, error } = await sendCommand(taskId, 'select_model', { modelId: modelId });
+        this.setData({ switchingModel: false });
+
+        if (error || !data || !data.accepted) {
+            wx.showToast({
+                title: (error && error.message || '切换失败').slice(0, 30),
+                icon: 'none',
+                duration: 3000,
+            });
+            return;
+        }
+        // accepted 只是受理，最终结果由 onCommandResponse 的 command_result 弹出。
+        // 乐观更新任务本地模型显示（服务端推送会再校正）
+        const tasks = (this.data.tasks || []).map((t) =>
+            t.id === taskId ? Object.assign({}, t, { model: modelId }) : t
+        );
+        this.setData({
+            tasks: tasks,
+            modelPanelCurrent: modelId,
+        });
+        this.applyFilter();
+        this.applyModelFilter();
+        wx.showToast({ title: '切换指令已受理', icon: 'none', duration: 2000 });
     },
 
     // ============================================================

@@ -21,7 +21,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 
 const ROOT = __dirname;
-const VERSION = '1.2.0';
+const VERSION = '1.2.1';
 const NODE_VERSION = '22.22.2';
 const TARGET = process.argv.includes('--mac') ? 'mac' : 'win';
 const NAME = TARGET === 'mac' ? `WorkBuddyMonitor-macos-${VERSION}` : `WorkBuddyMonitor-${VERSION}`;
