@@ -302,13 +302,27 @@ Page({
         this._refreshGuard = setTimeout(() => {
             if (this.data.refreshing) {
                 console.warn('[刷新] 超时兜底：强制复位 refreshing');
-                this.setData({ refreshing: false });
+                this.setData({
+                    refreshing: false,
+                    viewState: this.data.viewState === 'loading' ? 'error' : this.data.viewState,
+                    connectionState: this.data.connectionState === 'connecting' ? 'error' : this.data.connectionState,
+                    errorMessage: this.data.errorMessage || '刷新超时，请检查服务端与网络',
+                });
+                wx.showToast({ title: '刷新超时，请重试', icon: 'none', duration: 2500 });
             }
         }, 10000);
 
         const finishRefresh = () => {
             clearTimeout(this._refreshGuard);
             this.setData({ refreshing: false });
+            // 刷新后若处于错误状态，用 toast 明确告知原因（而不是默默停在错误页）
+            if (this.data.viewState === 'error') {
+                wx.showToast({
+                    title: (this.data.errorMessage || '刷新失败').slice(0, 30),
+                    icon: 'none',
+                    duration: 3000,
+                });
+            }
         };
 
         // 主动断开旧连接（保留配置，稍后重连）

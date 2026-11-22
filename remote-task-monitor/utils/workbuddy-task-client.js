@@ -531,6 +531,7 @@ function fetchTasks(options) {
         wx.request({
             url: httpBase + '/tasks',
             method: 'GET',
+            timeout: 8000,
             header: token ? { Authorization: 'Bearer ' + token } : {},
             success: (res) => {
                 if (res.statusCode === 200 && res.data && Array.isArray(res.data.tasks)) {

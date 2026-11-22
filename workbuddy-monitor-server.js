@@ -848,6 +848,12 @@ const server = http.createServer((req, res) => {
     // 公开端点无需鉴权
     const isPublic = PUBLIC_ENDPOINTS.includes(req.url);
 
+    // 请求日志（/token 是控制台高频健康探测，跳过避免刷屏）
+    if (!isPublic) {
+        const clientIp = (req.socket.remoteAddress || '').replace('::ffff:', '');
+        console.log(`[HTTP] ${clientIp} ${req.method} ${req.url}`);
+    }
+
     // 获取 token
     const authHeader = req.headers.authorization || '';
     const token = authHeader.replace(/^Bearer\s+/i, '');
@@ -1009,7 +1015,8 @@ const wss = new WebSocketServer({
 });
 
 wss.on('connection', (ws, req) => {
-    console.log('[WS] 新连接');
+    const wsIp = (req.socket.remoteAddress || '').replace('::ffff:', '');
+    console.log(`[WS] 新连接 from ${wsIp}`);
 
     // Token 鉴权
     const url = new URL(req.url, `http://${req.headers.host}`);
@@ -1048,8 +1055,8 @@ wss.on('connection', (ws, req) => {
         }
     });
 
-    ws.on('close', () => {
-        console.log('[WS] 连接关闭');
+    ws.on('close', (code, reason) => {
+        console.log(`[WS] 连接关闭 from ${wsIp} code=${code} reason=${reason && reason.toString ? reason.toString() : reason || ''}`);
     });
 
     ws.on('error', (err) => {
