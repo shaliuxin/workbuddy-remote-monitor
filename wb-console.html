@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WorkBuddy 监控 · 控制台</title>
+<style>
+:root{
+  --bg:#0b0f17;
+  --bg-2:#111823;
+  --card:#141c28;
+  --card-2:#18222f;
+  --line:#233043;
+  --line-2:#2c3c53;
+  --txt:#e6edf6;
+  --txt-2:#9aaabd;
+  --txt-3:#63758c;
+  --acc:#3ddc97;
+  --acc-2:#2bb37b;
+  --blue:#4d9dff;
+  --amber:#ffb545;
+  --red:#ff5f6d;
+  --purple:#a78bfa;
+  --radius:14px;
+  --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:
+    radial-gradient(1200px 600px at 15% -10%, rgba(61,220,151,.09), transparent 60%),
+    radial-gradient(900px 500px at 95% 0%, rgba(77,157,255,.08), transparent 55%),
+    var(--bg);
+  color:var(--txt);
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
+  font-size:14px;
+  line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+  padding:22px 22px 40px;
+}
+.wrap{max-width:1240px;margin:0 auto}
+
+/* ---------- header ---------- */
+header{display:flex;align-items:center;gap:14px;margin-bottom:22px;flex-wrap:wrap}
+.logo{
+  width:42px;height:42px;border-radius:12px;flex:0 0 auto;
+  background:linear-gradient(140deg,var(--acc),#1f8f63);
+  display:grid;place-items:center;
+  box-shadow:0 6px 20px rgba(61,220,151,.28);
+}
+.logo svg{width:22px;height:22px;stroke:#04241a}
+.title h1{font-size:17px;font-weight:650;letter-spacing:.2px}
+.title p{font-size:12px;color:var(--txt-3);margin-top:1px}
+.spacer{flex:1}
+.pill{
+  display:inline-flex;align-items:center;gap:7px;
+  padding:6px 13px;border-radius:999px;font-size:12.5px;font-weight:600;
+  border:1px solid var(--line-2);background:var(--card);
+}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--txt-3);flex:0 0 auto}
+.pill.on{color:var(--acc);border-color:rgba(61,220,151,.35);background:rgba(61,220,151,.09)}
+.pill.on .dot{background:var(--acc);box-shadow:0 0 0 4px rgba(61,220,151,.16);animation:breath 2s infinite}
+.pill.off{color:var(--red);border-color:rgba(255,95,109,.32);background:rgba(255,95,109,.08)}
+.pill.off .dot{background:var(--red)}
+@keyframes breath{0%,100%{opacity:1}50%{opacity:.35}}
+.clock{font-family:var(--mono);font-size:12px;color:var(--txt-3)}
+
+/* ---------- layout ---------- */
+.grid{display:grid;grid-template-columns:1.55fr 1fr;gap:16px;align-items:start}
+@media(max-width:940px){.grid{grid-template-columns:1fr}}
+.col{display:flex;flex-direction:column;gap:16px;min-width:0}
+
+/* ---------- card ---------- */
+.card{
+  background:linear-gradient(180deg,var(--card),var(--card-2));
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  padding:16px 18px;
+  box-shadow:0 10px 30px rgba(0,0,0,.22);
+}
+.card h2{
+  font-size:12px;font-weight:650;letter-spacing:1.1px;text-transform:uppercase;
+  color:var(--txt-3);margin-bottom:13px;display:flex;align-items:center;gap:8px;
+}
+.card h2 .bar{width:3px;height:12px;border-radius:2px;background:var(--acc)}
+
+/* ---------- fields ---------- */
+.field{margin-bottom:13px}
+.field:last-child{margin-bottom:0}
+.label{font-size:11.5px;color:var(--txt-3);margin-bottom:5px;display:flex;align-items:center;gap:6px}
+.tag{
+  font-size:10px;padding:1px 6px;border-radius:5px;font-weight:600;
+  background:rgba(61,220,151,.14);color:var(--acc);border:1px solid rgba(61,220,151,.25);
+}
+.tag.blue{background:rgba(77,157,255,.14);color:var(--blue);border-color:rgba(77,157,255,.28)}
+.tag.amber{background:rgba(255,181,69,.13);color:var(--amber);border-color:rgba(255,181,69,.28)}
+.row{
+  display:flex;align-items:center;gap:8px;
+  background:#0d131d;border:1px solid var(--line);
+  border-radius:10px;padding:9px 11px;
+}
+.row .val{
+  flex:1;min-width:0;font-family:var(--mono);font-size:13px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--txt);
+}
+.row .val.muted{color:var(--txt-3)}
+.iconbtn{
+  flex:0 0 auto;width:26px;height:26px;border-radius:7px;border:1px solid var(--line-2);
+  background:#162030;color:var(--txt-2);cursor:pointer;display:grid;place-items:center;
+  transition:.15s;
+}
+.iconbtn:hover{background:#1d2a3d;color:var(--txt);border-color:#3a4d68}
+.iconbtn svg{width:14px;height:14px}
+
+/* ---------- metrics ---------- */
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+@media(max-width:600px){.metrics{grid-template-columns:repeat(2,1fr)}}
+.metric{
+  background:#0d131d;border:1px solid var(--line);border-radius:11px;
+  padding:12px 13px;position:relative;overflow:hidden;
+}
+.metric::after{
+  content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--line-2);
+}
+.metric.g::after{background:var(--acc)}
+.metric.b::after{background:var(--blue)}
+.metric.a::after{background:var(--amber)}
+.metric.p::after{background:var(--purple)}
+.metric .k{font-size:11px;color:var(--txt-3);margin-bottom:4px;white-space:nowrap}
+.metric .v{font-size:22px;font-weight:680;font-family:var(--mono);letter-spacing:-.5px}
+.metric .v small{font-size:11px;font-weight:500;color:var(--txt-3);margin-left:3px;font-family:inherit}
+
+/* ---------- buttons ---------- */
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.btn{
+  border:1px solid var(--line-2);background:#16202e;color:var(--txt);
+  border-radius:11px;padding:13px 12px;cursor:pointer;
+  display:flex;align-items:center;gap:9px;justify-content:center;
+  font-size:13.5px;font-weight:600;font-family:inherit;
+  transition:.16s;position:relative;overflow:hidden;
+}
+.btn svg{width:16px;height:16px;flex:0 0 auto}
+.btn:hover:not(:disabled){transform:translateY(-1px);border-color:#41567a;background:#1b2739}
+.btn:active:not(:disabled){transform:translateY(0)}
+.btn:disabled{opacity:.38;cursor:not-allowed}
+.btn.primary{background:linear-gradient(140deg,var(--acc),#23a471);border-color:transparent;color:#04241a}
+.btn.primary:hover:not(:disabled){box-shadow:0 8px 22px rgba(61,220,151,.28);background:linear-gradient(140deg,#48e8a4,#26b47c)}
+.btn.danger{color:var(--red);border-color:rgba(255,95,109,.3);background:rgba(255,95,109,.07)}
+.btn.danger:hover:not(:disabled){background:rgba(255,95,109,.14);border-color:rgba(255,95,109,.5)}
+.btn.warn{color:var(--amber);border-color:rgba(255,181,69,.28);background:rgba(255,181,69,.06)}
+.btn.warn:hover:not(:disabled){background:rgba(255,181,69,.12)}
+.btn.full{grid-column:1/-1}
+.btn.loading{color:transparent!important;pointer-events:none}
+.btn.loading::after{
+  content:'';position:absolute;width:16px;height:16px;border-radius:50%;
+  border:2px solid currentColor;border-top-color:transparent;
+  border-color:rgba(255,255,255,.55);border-top-color:transparent;
+  animation:spin .7s linear infinite;
+}
+.btn.primary.loading::after{border-color:rgba(4,36,26,.45);border-top-color:transparent}
+@keyframes spin{to{transform:rotate(360deg)}}
+.hint{font-size:11.5px;color:var(--txt-3);margin-top:11px;line-height:1.6}
+
+/* ---------- log ---------- */
+.logbar{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+.seg{display:flex;background:#0d131d;border:1px solid var(--line);border-radius:9px;padding:2px;gap:2px}
+.seg button{
+  border:0;background:transparent;color:var(--txt-3);font-family:inherit;
+  font-size:11.5px;font-weight:600;padding:4px 10px;border-radius:7px;cursor:pointer;transition:.15s;
+}
+.seg button.active{background:#1f2c3e;color:var(--txt)}
+.switch{
+  display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--txt-3);
+  cursor:pointer;user-select:none;margin-left:auto;
+}
+.switch input{appearance:none;width:30px;height:17px;border-radius:999px;background:#243349;
+  position:relative;cursor:pointer;transition:.18s;border:1px solid var(--line-2)}
+.switch input::after{
+  content:'';position:absolute;top:2px;left:2px;width:11px;height:11px;border-radius:50%;
+  background:var(--txt-3);transition:.18s;
+}
+.switch input:checked{background:rgba(61,220,151,.28);border-color:rgba(61,220,151,.5)}
+.switch input:checked::after{left:15px;background:var(--acc)}
+#log{
+  height:300px;overflow:auto;background:#080c13;border:1px solid var(--line);
+  border-radius:11px;padding:11px 13px;
+  font-family:var(--mono);font-size:11.5px;line-height:1.72;color:#a9bccf;
+  white-space:pre-wrap;word-break:break-all;
+}
+#log::-webkit-scrollbar{width:9px}
+#log::-webkit-scrollbar-thumb{background:#243349;border-radius:9px}
+#log .ln{display:block}
+#log .err{color:#ff8e97}
+#log .ok{color:#5fe0a6}
+#log .dim{color:#54677d}
+#log .cap{color:#7fa8d8}
+#log .empty{color:var(--txt-3);font-style:italic}
+
+/* ---------- guide ---------- */
+.guide{display:flex;flex-direction:column;gap:10px}
+.step{display:flex;gap:10px;font-size:12.5px;color:var(--txt-2);line-height:1.55}
+.num{
+  flex:0 0 auto;width:19px;height:19px;border-radius:6px;background:#1d2a3d;
+  color:var(--blue);font-size:11px;font-weight:700;display:grid;place-items:center;margin-top:1px;
+}
+.step b{color:var(--txt);font-weight:600}
+
+/* ---------- toast ---------- */
+#toast{
+  position:fixed;left:50%;bottom:26px;transform:translate(-50%,20px);
+  background:#1b2739;border:1px solid var(--line-2);color:var(--txt);
+  padding:11px 18px;border-radius:11px;font-size:13px;font-weight:500;
+  box-shadow:0 14px 40px rgba(0,0,0,.45);
+  opacity:0;pointer-events:none;transition:.22s;max-width:min(90vw,520px);text-align:center;
+  z-index:99;
+}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+#toast.ok{border-color:rgba(61,220,151,.45)}
+#toast.err{border-color:rgba(255,95,109,.45);color:#ffc3c7}
+.foot{margin-top:20px;text-align:center;font-size:11px;color:var(--txt-3)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 7h16M4 12h10M4 17h7"/>
+      </svg>
+    </div>
+    <div class="title">
+      <h1>WorkBuddy 监控服务端 · 控制台</h1>
+      <p>手机端远程查看与控制任务 · 本机管理面板</p>
+    </div>
+    <div class="spacer"></div>
+    <div class="pill off" id="statusPill"><span class="dot"></span><span id="statusText">检测中…</span></div>
+    <div class="clock" id="clock">--:--:--</div>
+  </header>
+
+  <div class="grid">
+
+    <!-- 左列 -->
+    <div class="col">
+
+      <div class="card">
+        <h2><span class="bar"></span>连接信息</h2>
+
+        <div class="field">
+          <div class="label">服务端地址 <span class="tag blue">局域网</span></div>
+          <div class="row">
+            <span class="val" id="addrVal">—</span>
+            <button class="iconbtn" title="复制地址" data-copy="addrVal">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="label">访问 Token <span class="tag amber">鉴权</span></div>
+          <div class="row">
+            <span class="val muted" id="tokenVal">—</span>
+            <button class="iconbtn" id="eyeBtn" title="显示/隐藏">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+            <button class="iconbtn" title="复制 Token" data-copy="tokenVal">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="label">小程序连接串 <span class="tag">粘贴到手机端</span></div>
+          <div class="row">
+            <span class="val" id="wsVal">—</span>
+            <button class="iconbtn" title="复制连接串" data-copy="wsVal">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="metrics" style="margin-top:14px">
+          <div class="metric g"><div class="k">手机在线</div><div class="v" id="mClients">0</div></div>
+          <div class="metric b"><div class="k">任务总数</div><div class="v" id="mSessions">0</div></div>
+          <div class="metric a"><div class="k">活跃会话</div><div class="v" id="mActive">0</div></div>
+          <div class="metric p"><div class="k">运行时长</div><div class="v" id="mUptime">—</div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2><span class="bar"></span>服务日志</h2>
+        <div class="logbar">
+          <div class="seg">
+            <button data-src="out" class="active">输出</button>
+            <button data-src="err">错误</button>
+          </div>
+          <button class="iconbtn" id="clearLogBtn" title="清空日志">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
+          </button>
+          <label class="switch"><input type="checkbox" id="autoScroll" checked>自动滚动</label>
+        </div>
+        <div id="log"><span class="empty">加载中…</span></div>
+      </div>
+
+    </div>
+
+    <!-- 右列 -->
+    <div class="col">
+
+      <div class="card">
+        <h2><span class="bar"></span>服务控制</h2>
+        <div class="actions">
+          <button class="btn primary" id="btnStart">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>启动
+          </button>
+          <button class="btn danger" id="btnStop">
+            <svg viewBox="0 0 24 24" fill="currentColor"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>停止
+          </button>
+          <button class="btn full" id="btnRestart">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3.2-6.9"/><path d="M21 3v6h-6"/></svg>重启服务端
+          </button>
+          <button class="btn full warn" id="btnResetToken">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 6v6l4 2"/></svg>重置 Token（需重连手机）
+          </button>
+        </div>
+        <div class="hint" id="ctlHint">正在读取状态…</div>
+      </div>
+
+      <div class="card">
+        <h2><span class="bar"></span>运行状态</h2>
+        <div class="field">
+          <div class="label">进程 PID / 端口</div>
+          <div class="row"><span class="val" id="pidVal">—</span></div>
+        </div>
+        <div class="field">
+          <div class="label">健康检查</div>
+          <div class="row"><span class="val" id="healthVal">—</span></div>
+        </div>
+        <div class="field">
+          <div class="label">最近一条日志</div>
+          <div class="row"><span class="val muted" id="lastLogVal">—</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2><span class="bar"></span>手机端接入</h2>
+        <div class="guide">
+          <div class="step"><span class="num">1</span><span>手机与电脑连<b>同一个 WiFi</b>，电脑防火墙放行 <b id="portTxt">48787</b> 端口。</span></div>
+          <div class="step"><span class="num">2</span><span>打开小程序，把上面的<b>服务端地址</b>和 <b>Token</b> 填进设置页。</span></div>
+          <div class="step"><span class="num">3</span><span>连接成功后，「手机在线」会变成 <b>1</b> 以上，任务列表自动同步。</span></div>
+        </div>
+        <div class="hint">控制台只监听本机 127.0.0.1，请勿关闭此页面所在终端；关闭终端只会停止控制台，监控服务端仍在后台运行。</div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="foot">WorkBuddy Monitor Console · 本地管理面板</div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+let state = null;
+let tokenShown = false;
+let logSrc = 'out';
+let logTimer = null;
+let busy = false;
+
+// ---------- toast ----------
+let toastTimer = null;
+function toast(msg, kind) {
+  const el = $('toast');
+  el.textContent = msg;
+  el.className = 'show' + (kind ? ' ' + kind : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = ''; }, 2600);
+}
+
+// ---------- clipboard ----------
+async function copyText(text, label) {
+  if (!text) return toast('没有可复制的内容', 'err');
+  try {
+    await navigator.clipboard.writeText(text);
+    toast('已复制' + (label ? '：' + label : ''), 'ok');
+  } catch (e) {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); toast('已复制', 'ok'); }
+    catch (err) { toast('复制失败，请手动选中', 'err'); }
+    document.body.removeChild(ta);
+  }
+}
+
+// ---------- format ----------
+function fmtUptime(sec) {
+  if (!sec || sec < 1) return '—';
+  const d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600),
+        m = Math.floor(sec % 3600 / 60), s = sec % 60;
+  if (d) return d + 'd' + h + 'h';
+  if (h) return h + 'h' + m + 'm';
+  if (m) return m + 'm' + s + 's';
+  return s + 's';
+}
+
+// ---------- render ----------
+function render(s) {
+  state = s;
+  const m = s.monitor;
+
+  // status pill
+  const pill = $('statusPill');
+  if (m.running && m.healthy) {
+    pill.className = 'pill on';
+    $('statusText').textContent = '运行中';
+  } else if (m.running) {
+    pill.className = 'pill off';
+    $('statusText').textContent = '启动中…';
+  } else {
+    pill.className = 'pill off';
+    $('statusText').textContent = '已停止';
+  }
+
+  // address / token / ws
+  const prim = s.net.primary;
+  const addr = prim ? prim.http.replace(/^http:\/\//, '') : '—';
+  $('addrVal').textContent = addr;
+  $('addrVal').dataset.copy = prim ? prim.address + ':' + m.port : '';
+
+  const raw = s.token.value || '';
+  $('tokenVal').textContent = raw ? (tokenShown ? raw : s.token.masked) : '尚未生成（首次启动自动创建）';
+  $('tokenVal').dataset.copy = raw;
+
+  const wsFull = prim && raw ? prim.ws + '?token=' + raw : '';
+  $('wsVal').textContent = prim
+    ? (raw ? (tokenShown ? wsFull : prim.ws + '?token=' + s.token.masked) : prim.ws)
+    : '—';
+  $('wsVal').dataset.copy = wsFull;
+
+  // metrics
+  $('mClients').textContent = m.clients;
+  $('mSessions').textContent = m.sessions;
+  $('mActive').textContent = m.activeSessions;
+  $('mUptime').textContent = fmtUptime(m.uptimeSec);
+  $('portTxt').textContent = m.port;
+
+  // runtime
+  $('pidVal').textContent = m.running ? ('PID ' + m.pid + ' · 端口 ' + m.port) : '未运行';
+  $('healthVal').textContent = m.running
+    ? (m.healthy ? '正常 · 响应正常' : '启动中 · 等待端口响应')
+    : '—';
+  $('lastLogVal').textContent = (m.lastErr || m.lastOut || '—').slice(0, 120);
+
+  // buttons
+  $('btnStart').disabled = busy || m.running;
+  $('btnStop').disabled = busy || !m.running;
+  $('btnRestart').disabled = busy || !m.running;
+  $('btnResetToken').disabled = busy;
+
+  $('ctlHint').textContent = m.running
+    ? '服务端运行中，手机可随时连接。修改 Token 后所有手机需重新配置。'
+    : '服务端未运行，点击「启动」拉起 48787 端口。';
+}
+
+// ---------- api ----------
+async function api(path, method) {
+  const res = await fetch(path, { method: method || 'GET', headers: { 'Content-Type': 'application/json' } });
+  return res.json();
+}
+
+async function refresh() {
+  try {
+    const s = await api('/api/state');
+    render(s);
+    $('clock').textContent = '控制台 ' + new Date().toLocaleTimeString('zh-CN', { hour12: false });
+  } catch (e) {
+    $('statusPill').className = 'pill off';
+    $('statusText').textContent = '控制台失联';
+  }
+}
+
+async function loadLog() {
+  try {
+    const r = await api('/api/logs?lines=260&src=' + logSrc);
+    const box = $('log');
+    const lines = (r.lines || []).filter((l, i, a) => !(i === a.length - 1 && l === ''));
+    if (!lines.length) {
+      box.innerHTML = '<span class="empty">暂无日志</span>';
+      return;
+    }
+    box.innerHTML = lines.map((l) => {
+      let cls = 'ln';
+      if (/\[error\]|错误|失败|Error|✗|❌/i.test(l)) cls += ' err';
+      else if (/✅|成功|已启动|已连接|Token 验证通过/.test(l)) cls += ' ok';
+      else if (/^\[/.test(l)) cls += ' cap';
+      else cls += ' dim';
+      return '<span class="' + cls + '">' + escapeHtml(l) + '</span>';
+    }).join('');
+    if ($('autoScroll').checked) box.scrollTop = box.scrollHeight;
+  } catch (e) { /* ignore */ }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+// ---------- actions ----------
+async function action(btnId, path, confirmText) {
+  if (busy) return;
+  if (confirmText && !confirm(confirmText)) return;
+  const btn = $(btnId);
+  busy = true;
+  btn.classList.add('loading');
+  ['btnStart', 'btnStop', 'btnRestart', 'btnResetToken'].forEach((id) => { $(id).disabled = true; });
+  try {
+    const r = await api(path, 'POST');
+    toast(r.message || (r.ok ? '完成' : '失败'), r.ok ? 'ok' : 'err');
+  } catch (e) {
+    toast('请求失败: ' + e.message, 'err');
+  } finally {
+    btn.classList.remove('loading');
+    busy = false;
+    await refresh();
+    await loadLog();
+  }
+}
+
+// ---------- bind ----------
+document.querySelectorAll('[data-copy]').forEach((b) => {
+  b.addEventListener('click', () => {
+    const id = b.dataset.copy;
+    const el = $(id);
+    const text = (el && (el.dataset.copy || el.textContent)) || '';
+    const labelMap = { addrVal: '服务端地址', tokenVal: 'Token', wsVal: '小程序连接串' };
+    copyText(text, labelMap[id] || '');
+  });
+});
+
+$('eyeBtn').addEventListener('click', () => { tokenShown = !tokenShown; if (state) render(state); });
+
+$('btnStart').addEventListener('click', () => action('btnStart', '/api/start'));
+$('btnStop').addEventListener('click', () => action('btnStop', '/api/stop', '确认停止监控服务端？手机将立即断开连接。'));
+$('btnRestart').addEventListener('click', () => action('btnRestart', '/api/restart', '确认重启监控服务端？手机会短暂断开后自动重连。'));
+$('btnResetToken').addEventListener('click', () => action('btnResetToken', '/api/token/reset', '重置 Token 会使当前所有手机连接失效，需要在手机上重新填写新 Token。继续？'));
+
+document.querySelectorAll('.seg button').forEach((b) => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.seg button').forEach((x) => x.classList.remove('active'));
+    b.classList.add('active');
+    logSrc = b.dataset.src;
+    loadLog();
+  });
+});
+
+$('clearLogBtn').addEventListener('click', async () => {
+  if (!confirm('清空日志文件？')) return;
+  const r = await api('/api/logs/clear', 'POST');
+  toast(r.message || '已清空', 'ok');
+  loadLog();
+});
+
+// ---------- boot ----------
+refresh();
+loadLog();
+setInterval(refresh, 2000);
+setInterval(loadLog, 3000);
+</script>
+</body>
+</html>

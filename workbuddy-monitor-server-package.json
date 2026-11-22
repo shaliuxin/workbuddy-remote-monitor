@@ -1,0 +1,21 @@
+{
+  "name": "workbuddy-monitor-server",
+  "version": "1.0.0",
+  "description": "WorkBuddy 任务监控服务端 - 支持手机端实时监控与操作本地任务",
+  "main": "workbuddy-monitor-server.js",
+  "scripts": {
+    "start": "node workbuddy-monitor-server.js",
+    "dev": "node workbuddy-monitor-server.js"
+  },
+  "keywords": [
+    "workbuddy",
+    "monitor",
+    "websocket",
+    "task"
+  ],
+  "author": "WorkBuddy",
+  "license": "MIT",
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

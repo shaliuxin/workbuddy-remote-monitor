@@ -1,0 +1,20 @@
+# 编译产物（作为 GitHub Release 附件分发，不进 git）
+dist/
+
+# 依赖
+node_modules/
+remote-task-monitor/node_modules/
+__pycache__/
+
+# 运行时日志与状态（含 token 等敏感信息）
+*.log
+.monitor-state.json
+*.prev.log
+
+# WorkBuddy 会话数据（只保留两个 Windows 辅助脚本）
+.workbuddy/*
+!.workbuddy/_readenv.py
+!.workbuddy/_readcmd.py
+
+# 本地杂项
+*.genie
