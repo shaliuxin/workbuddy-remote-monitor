@@ -866,9 +866,33 @@ function fromWorkBuddyTask(task) {
         createdAt: created,
         updatedAt: updated,
         updatedText: formatTime(updated),
+        // 来源：marvis = 腾讯 Marvis 任务，其余为 WorkBuddy
+        source: typeof task.source === 'string' ? task.source : '',
+        isMarvis: String(task.id || '').indexOf('marvis:') === 0 || task.source === 'marvis',
         // 会话当前使用的模型（模型切换功能展示/回显用）
         model: typeof task.model === 'string' ? task.model : '',
+        // 卡片按钮上展示的短名，避免长模型名把按钮撑出屏幕
+        modelShort: shortModelName(task.model),
     };
+}
+
+/**
+ * 模型名精简：去掉 provider 前缀并限长，专供任务卡按钮显示。
+ * 例：custom-local:qwen3.8:27B → qwen3.8:27B
+ */
+function shortModelName(model) {
+    if (typeof model !== 'string') {
+        return '';
+    }
+    let name = model.trim();
+    if (!name) {
+        return '';
+    }
+    name = name.replace(/^custom-local:/i, '');
+    if (name.length > 14) {
+        name = name.slice(0, 13) + '…';
+    }
+    return name;
 }
 
 function toMillis(value) {

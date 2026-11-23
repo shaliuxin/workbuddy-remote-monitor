@@ -1,28 +1,36 @@
 <view class="page">
-    <view class="hero">
-        <view class="hero-top">
-            <view class="hero-text">
-                <text class="eyebrow">WORKBUDDY TASK MONITOR</text>
-                <text class="title">{{title}}</text>
-                <text class="subtitle">{{subtitle}}</text>
+    <!-- 顶部栏：标题 + 图标操作，文字按钮不再挤占标题宽度 -->
+    <view class="topbar">
+        <view class="topbar-text">
+            <text class="eyebrow">WORKBUDDY TASK MONITOR</text>
+            <text class="title">{{title}}</text>
+            <text class="subtitle">{{subtitle}}</text>
+        </view>
+        <view class="topbar-actions">
+            <view
+                class="icon-btn"
+                wx:if="{{connectionState === 'connected'}}"
+                bindtap="handleRetry"
+                hover-class="icon-btn-hover"
+            >
+                <text class="icon-glyph {{refreshing ? 'icon-spin' : ''}}">↻</text>
             </view>
-            <view class="hero-buttons">
-                <button class="refresh-button" size="mini" wx:if="{{connectionState === 'connected'}}" bindtap="handleRetry" loading="{{refreshing}}" disabled="{{refreshing}}">{{refreshing ? '刷新中' : '刷新'}}</button>
-                <button class="settings-button" size="mini" bindtap="openSettings">设置</button>
+            <view class="icon-btn" bindtap="openSettings" hover-class="icon-btn-hover">
+                <text class="icon-glyph">⚙</text>
             </view>
         </view>
-        <view class="hero-foot">
-            <view class="connection-status">
-                <view class="status-dot status-dot-{{connectionState}}"></view>
-                <text class="connection-text">{{connectionMessage}}</text>
-            </view>
-        </view>
+    </view>
+
+    <!-- 连接状态条 -->
+    <view class="conn-bar conn-bar-{{connectionState}}">
+        <view class="status-dot status-dot-{{connectionState}}"></view>
+        <text class="conn-text">{{connectionMessage}}</text>
     </view>
 
     <view class="state-card" wx:if="{{connectionState === 'connecting'}}">
         <view class="spinner"></view>
         <text class="state-title">正在连接</text>
-        <text class="state-description">正在建立与 WorkBuddy 的连接...</text>
+        <text class="state-description">正在建立与 WorkBuddy 的连接…</text>
     </view>
 
     <view class="state-card state-card-error" wx:elif="{{connectionState === 'error'}}">
@@ -41,6 +49,7 @@
     </view>
 
     <block wx:else>
+        <!-- 统计 / 筛选 -->
         <view class="summary" wx:if="{{viewState !== 'loading'}}">
             <view class="summary-item {{statusFilter === 'all' ? 'summary-active' : ''}}" data-filter="all" bindtap="handleFilterTap">
                 <text class="summary-num">{{summary.total}}</text>
@@ -66,14 +75,17 @@
 
         <!-- 搜索框 -->
         <view class="search-bar" wx:if="{{viewState === 'ready' || viewState === 'filtered-empty'}}">
+            <view class="search-icon"></view>
             <input class="search-input" placeholder="搜索任务标题或描述" value="{{keyword}}" bindinput="handleKeywordInput" confirm-type="search" />
-            <text class="search-clear" wx:if="{{keyword !== ''}}" bindtap="handleClearKeyword">✕</text>
+            <view class="search-clear" wx:if="{{keyword !== ''}}" bindtap="handleClearKeyword">
+                <text class="search-clear-glyph">✕</text>
+            </view>
         </view>
 
         <!-- 当前筛选提示 -->
         <view class="filter-hint" wx:if="{{viewState === 'ready' && (statusFilter !== 'all' || keyword !== '')}}">
-            <text class="filter-hint-text">已筛选出 {{filteredCount}} / {{summary.total}} 个任务</text>
-            <text class="filter-hint-reset" bindtap="handleResetFilter">清除筛选</text>
+            <text class="filter-hint-text">已筛选 {{filteredCount}} / {{summary.total}} 个任务</text>
+            <text class="filter-hint-reset" bindtap="handleResetFilter">清除</text>
         </view>
 
         <view class="state-card" wx:if="{{viewState === 'loading'}}">
@@ -102,99 +114,126 @@
             <button class="primary-button" bindtap="handleRetry">重试</button>
         </view>
 
-        <view class="content-card" wx:else>
-            <view class="task-item" wx:for="{{visibleTasks}}" wx:key="id">
-                <view class="task-main">
-                    <view class="task-head">
-                        <text class="task-title">{{item.title}}</text>
+        <!-- 任务列表：卡片纵向布局，操作栏独立一行三等分，永不溢出 -->
+        <view class="task-list" wx:else>
+            <view class="task-card" wx:for="{{visibleTasks}}" wx:key="id">
+                <view class="task-head">
+                    <text class="task-title">{{item.title}}</text>
+                    <view class="head-badges">
+                        <view class="source-badge" wx:if="{{item.isMarvis}}">Marvis</view>
                         <view class="badge {{item.statusCls}}">{{item.statusText}}</view>
                     </view>
-                    <view class="progress-track">
-                        <view class="progress-fill" style="width: {{item.progress}}%;"></view>
-                    </view>
-                    <view class="task-meta">
-                        <text class="task-progress">{{item.progressText}}</text>
-                        <text class="task-time">{{item.updatedText}}</text>
-                    </view>
-                    <text class="task-description" wx:if="{{item.stepSubject}}">当前步骤：{{item.stepSubject}}</text>
-                    <text class="task-description" wx:if="{{item.description}}">{{item.description}}</text>
-
-                    <!-- 任务发来的选择请求：展示选项按钮，点选即回传 -->
-                    <view class="selection-box" wx:if="{{selectionRequests[item.id]}}">
-                        <view class="selection-prompt">
-                            <text class="selection-icon">?</text>
-                            <text class="selection-prompt-text">{{selectionRequests[item.id].prompt}}</text>
-                        </view>
-                        <view class="selection-options">
-                            <button
-                                class="selection-option-btn"
-                                wx:for="{{selectionRequests[item.id].options}}"
-                                wx:for-item="opt"
-                                wx:key="value"
-                                data-taskid="{{item.id}}"
-                                data-requestid="{{selectionRequests[item.id].requestId}}"
-                                data-value="{{opt.value}}"
-                                data-label="{{opt.label}}"
-                                bindtap="handleSelectOption"
-                                disabled="{{sendingCommand}}"
-                            >{{opt.label}}</button>
-                        </view>
-                        <text
-                            class="selection-dismiss"
-                            data-taskid="{{item.id}}"
-                            bindtap="handleDismissSelection"
-                        >忽略</text>
-                    </view>
                 </view>
-                <view class="task-actions">
-                    <button class="command-button command-button-ghost" size="mini" data-id="{{item.id}}" bindtap="openConvPanel">对话</button>
-                    <button class="command-button" size="mini" data-id="{{item.id}}" bindtap="openCommandPanel">操作</button>
-                    <button class="command-button command-button-model" size="mini" data-id="{{item.id}}" bindtap="openModelPanel">{{item.model || '选模型'}}</button>
+
+                <view class="progress-row">
+                    <view class="progress-track">
+                        <view class="progress-fill progress-fill-{{item.status}}" style="width: {{item.progress}}%;"></view>
+                    </view>
+                    <text class="progress-num">{{item.progressText}}</text>
+                </view>
+
+                <text class="task-step" wx:if="{{item.stepSubject}}">
+                    <text class="task-step-mark">▸</text>{{item.stepSubject}}
+                </text>
+                <text class="task-desc" wx:if="{{item.description}}">{{item.description}}</text>
+
+                <!-- 任务发来的选择请求：展示选项按钮，点选即回传 -->
+                <view class="selection-box" wx:if="{{selectionRequests[item.id]}}">
+                    <view class="selection-prompt">
+                        <text class="selection-icon">?</text>
+                        <text class="selection-prompt-text">{{selectionRequests[item.id].prompt}}</text>
+                    </view>
+                    <view class="selection-options">
+                        <button
+                            class="selection-option-btn"
+                            wx:for="{{selectionRequests[item.id].options}}"
+                            wx:for-item="opt"
+                            wx:key="value"
+                            data-taskid="{{item.id}}"
+                            data-requestid="{{selectionRequests[item.id].requestId}}"
+                            data-value="{{opt.value}}"
+                            data-label="{{opt.label}}"
+                            bindtap="handleSelectOption"
+                            disabled="{{sendingCommand}}"
+                        >{{opt.label}}</button>
+                    </view>
+                    <text
+                        class="selection-dismiss"
+                        data-taskid="{{item.id}}"
+                        bindtap="handleDismissSelection"
+                    >忽略</text>
+                </view>
+
+                <view class="task-foot">
+                    <view class="task-time-row">
+                        <text class="task-time">{{item.updatedText}} 更新</text>
+                    </view>
+                    <view class="task-actions">
+                        <view class="task-btn" data-id="{{item.id}}" bindtap="openConvPanel" hover-class="task-btn-hover">
+                            <text class="task-btn-text">对话</text>
+                        </view>
+                        <view class="task-btn" data-id="{{item.id}}" bindtap="openCommandPanel" hover-class="task-btn-hover">
+                            <text class="task-btn-text">操作</text>
+                        </view>
+                        <view class="task-btn task-btn-model" wx:if="{{!item.isMarvis}}" data-id="{{item.id}}" bindtap="openModelPanel" hover-class="task-btn-hover">
+                            <text class="task-btn-text task-btn-model-text">{{item.modelShort || '选择模型'}}</text>
+                        </view>
+                        <view class="task-btn task-btn-model" wx:else>
+                            <text class="task-btn-text task-btn-model-text">{{item.modelShort || 'Marvis 模型'}}</text>
+                        </view>
+                    </view>
                 </view>
             </view>
         </view>
     </block>
 
-    <view class="command-mask" wx:if="{{commandPanelOpen}}" bindtap="closeCommandPanel"></view>
-    <view class="command-panel" wx:if="{{commandPanelOpen}}">
-        <text class="command-title">任务操作</text>
-        <text class="command-task-title">{{selectedTaskTitle}}</text>
-
-        <text class="command-result" wx:if="{{commandResult !== ''}}">{{commandResult}}</text>
-
-        <view wx:else>
-            <!-- 指令按钮 -->
-            <view class="command-buttons" wx:if="{{commandButtons.length > 0}}">
-                <button class="command-btn" wx:for="{{commandButtons}}" wx:key="command" data-command="{{item.command}}" bindtap="handleCommandTap" disabled="{{sendingCommand}}">
-                    {{item.text}}
-                </button>
-            </view>
-
-            <!-- 文字输入 -->
-            <view class="text-input-group">
-                <text class="text-input-label">发送消息</text>
-                <textarea class="text-input" placeholder="输入文字发送给任务..." value="{{textMessage}}" bindinput="handleTextMessageInput" maxlength="500" disabled="{{sendingCommand}}" />
-                <button class="text-send-btn" bindtap="handleSendText" disabled="{{sendingCommand || textMessage === ''}}">
-                    发送
-                </button>
-            </view>
+    <!-- 指令面板（底部抽屉） -->
+    <view class="sheet-mask" wx:if="{{commandPanelOpen}}" bindtap="closeCommandPanel"></view>
+    <view class="sheet sheet-command" wx:if="{{commandPanelOpen}}">
+        <view class="sheet-grip"></view>
+        <view class="sheet-head">
+            <text class="sheet-title">任务操作</text>
+            <text class="sheet-subtitle">{{selectedTaskTitle}}</text>
         </view>
 
-        <button class="command-close" bindtap="closeCommandPanel" disabled="{{sendingCommand}}">关闭</button>
+        <view class="sheet-body">
+                <view class="command-result" wx:if="{{commandResult !== ''}}">{{commandResult}}</view>
+
+                <view wx:else>
+                    <view class="marshal-note" wx:if="{{selectedTaskIsMarvis}}">
+                        Marvis 任务支持「审批 / 选项回传」等交互操作；当前版本暂不支持手机远程发消息、中止和切换模型。
+                    </view>
+
+                    <view class="command-buttons" wx:if="{{commandButtons.length > 0}}">
+                        <button class="command-btn" wx:for="{{commandButtons}}" wx:key="command" data-command="{{item.command}}" bindtap="handleCommandTap" disabled="{{sendingCommand}}">
+                            {{item.text}}
+                        </button>
+                    </view>
+
+                    <view class="text-input-group" wx:if="{{!selectedTaskIsMarvis}}">
+                        <text class="text-input-label">发送消息</text>
+                        <textarea class="text-input" placeholder="输入文字发送给任务…" value="{{textMessage}}" bindinput="handleTextMessageInput" maxlength="500" disabled="{{sendingCommand}}" />
+                        <button class="text-send-btn" bindtap="handleSendText" disabled="{{sendingCommand || textMessage === ''}}">发送</button>
+                    </view>
+                </view>
+        </view>
+
+        <button class="sheet-close-btn" bindtap="closeCommandPanel" disabled="{{sendingCommand}}">关闭</button>
     </view>
 
-    <!-- 对话内容面板：展示任务最后一条对话 -->
-    <view class="mask" wx:if="{{convPanelOpen}}" bindtap="closeConvPanel"></view>
-    <view class="conv-panel" wx:if="{{convPanelOpen}}">
-        <view class="conv-header">
-            <text class="conv-title">任务对话</text>
-            <text class="conv-task-title">{{selectedTaskTitle}}</text>
+    <!-- 对话内容面板（底部抽屉） -->
+    <view class="sheet-mask" wx:if="{{convPanelOpen}}" bindtap="closeConvPanel"></view>
+    <view class="sheet sheet-conv" wx:if="{{convPanelOpen}}">
+        <view class="sheet-grip"></view>
+        <view class="sheet-head">
+            <text class="sheet-title">任务对话</text>
+            <text class="sheet-subtitle">{{selectedTaskTitle}}</text>
         </view>
 
         <scroll-view class="conv-body" scroll-y="true">
             <view class="conv-loading" wx:if="{{convLoading}}">
                 <view class="spinner"></view>
-                <text class="conv-loading-text">正在读取对话内容...</text>
+                <text class="conv-loading-text">正在读取对话内容…</text>
             </view>
 
             <view class="conv-error" wx:elif="{{convError !== ''}}">
@@ -216,41 +255,47 @@
             </view>
         </scroll-view>
 
-        <button class="command-close" bindtap="closeConvPanel">关闭</button>
+        <button class="sheet-close-btn" bindtap="closeConvPanel">关闭</button>
     </view>
 
-    <!-- 服务器管理面板 -->
-    <view class="mask" wx:if="{{settingsOpen}}" bindtap="closeSettings"></view>
-    <view class="panel server-panel" wx:if="{{settingsOpen}}">
-        <text class="panel-title">服务器管理</text>
-        <text class="panel-hint">可保存多台电脑的 WorkBuddy 监控服务，点击即可切换连接。</text>
+    <!-- 服务器管理面板（底部抽屉） -->
+    <view class="sheet-mask" wx:if="{{settingsOpen}}" bindtap="closeSettings"></view>
+    <view class="sheet sheet-server" wx:if="{{settingsOpen}}">
+        <view class="sheet-grip"></view>
+        <view class="sheet-head">
+            <text class="sheet-title">服务器管理</text>
+            <text class="sheet-subtitle">可保存多台电脑的监控服务，点击即可切换连接</text>
+        </view>
 
         <!-- 已保存的服务器列表 -->
-        <view class="server-list" wx:if="{{!editingServer}}">
-            <view
-                class="server-item {{activeServerId === item.id ? 'server-item-active' : ''}}"
-                wx:for="{{servers}}"
-                wx:key="id"
-            >
-                <view class="server-item-main" data-id="{{item.id}}" bindtap="handleSwitchServer">
-                    <view class="server-item-head">
-                        <text class="server-name">{{item.name}}</text>
-                        <view class="server-badge" wx:if="{{activeServerId === item.id}}">当前</view>
+        <block wx:if="{{!editingServer}}">
+            <scroll-view class="server-list" scroll-y>
+                <view
+                    class="server-item {{activeServerId === item.id ? 'server-item-active' : ''}}"
+                    wx:for="{{servers}}"
+                    wx:key="id"
+                >
+                    <view class="server-item-main" data-id="{{item.id}}" bindtap="handleSwitchServer">
+                        <view class="server-item-head">
+                            <text class="server-name">{{item.name}}</text>
+                            <view class="server-badge" wx:if="{{activeServerId === item.id}}">当前</view>
+                        </view>
+                        <text class="server-endpoint">{{item.endpoint}}</text>
                     </view>
-                    <text class="server-endpoint">{{item.endpoint}}</text>
+                    <view class="server-item-ops">
+                        <button class="op-btn" size="mini" data-id="{{item.id}}" catchtap="handleEditServer">编辑</button>
+                        <button class="op-btn op-btn-danger" size="mini" data-id="{{item.id}}" catchtap="handleDeleteServer">删除</button>
+                    </view>
                 </view>
-                <view class="server-item-ops">
-                    <button class="op-btn" size="mini" data-id="{{item.id}}" catchtap="handleEditServer">编辑</button>
-                    <button class="op-btn op-btn-danger" size="mini" data-id="{{item.id}}" catchtap="handleDeleteServer">删除</button>
-                </view>
-            </view>
 
-            <view class="server-empty" wx:if="{{servers.length === 0}}">
-                <text>还没有保存任何服务器</text>
-            </view>
+                <view class="server-empty" wx:if="{{servers.length === 0}}">
+                    <text>还没有保存任何服务器</text>
+                </view>
+            </scroll-view>
 
             <button class="add-server-btn" bindtap="handleAddServer">＋ 添加服务器</button>
-        </view>
+            <button class="sheet-close-btn" bindtap="closeSettings">关闭</button>
+        </block>
 
         <!-- 新增/编辑服务器表单 -->
         <view class="server-form" wx:if="{{editingServer}}">
@@ -277,22 +322,21 @@
 
             <view class="panel-actions">
                 <button class="sheet-button" bindtap="handleCancelEdit" disabled="{{savingSettings}}">取消</button>
-                <button class="sheet-button primary-button" bindtap="handleSaveEditingServer" disabled="{{savingSettings}}">保存</button>
+                <button class="sheet-button sheet-button-primary" bindtap="handleSaveEditingServer" disabled="{{savingSettings}}">保存</button>
             </view>
-        </view>
-
-        <view class="panel-actions" wx:if="{{!editingServer}}">
-            <button class="sheet-button" bindtap="closeSettings">关闭</button>
         </view>
     </view>
 </view>
 
-<!-- 模型选择面板：为单个任务切换所用模型 -->
-<view class="mask" wx:if="{{modelPanelOpen}}" bindtap="closeModelPanel"></view>
-<view class="panel model-panel" wx:if="{{modelPanelOpen}}">
-    <text class="panel-title">选择模型</text>
-    <text class="panel-task-name">{{modelPanelTaskTitle}}</text>
-    <text class="panel-hint">当前：{{modelPanelCurrent || '未设置'}} · 切换后下一轮对话生效</text>
+<!-- 模型选择面板（底部抽屉） -->
+<view class="sheet-mask" wx:if="{{modelPanelOpen}}" bindtap="closeModelPanel"></view>
+<view class="sheet sheet-model" wx:if="{{modelPanelOpen}}">
+    <view class="sheet-grip"></view>
+    <view class="sheet-head">
+        <text class="sheet-title">选择模型</text>
+        <text class="sheet-subtitle">{{modelPanelTaskTitle}}</text>
+        <text class="sheet-note">当前：{{modelPanelCurrent || '未设置'}} · 切换后下一轮对话生效</text>
+    </view>
 
     <view class="model-search">
         <input class="field-input" placeholder="搜索模型…" value="{{modelKeyword}}" bindinput="handleModelKeyword" />
@@ -327,7 +371,5 @@
         </view>
     </scroll-view>
 
-    <view class="panel-actions">
-        <button class="sheet-button" bindtap="closeModelPanel" disabled="{{switchingModel}}">关闭</button>
-    </view>
+    <button class="sheet-close-btn" bindtap="closeModelPanel" disabled="{{switchingModel}}">关闭</button>
 </view>

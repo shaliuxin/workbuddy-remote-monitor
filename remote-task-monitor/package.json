@@ -1,7 +1,7 @@
 {
   "name": "remote-task-monitor",
   "version": "1.0.0",
-  "description": "远程任务监看小程序",
+  "description": "远程AI任务管家小程序",
   "private": true,
   "dependencies": {
     "@tencent-ai/workbuddy-cloud-sdk": "dev"

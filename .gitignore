@@ -18,3 +18,4 @@ __pycache__/
 
 # 本地杂项
 *.genie
+@AutomationLog.txt

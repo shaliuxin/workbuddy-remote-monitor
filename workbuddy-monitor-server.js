@@ -30,6 +30,8 @@ const wbActivity = require('./wb_session_activity');
 const wbControl = require('./wb_control');
 // 真实 AskUserQuestion 监听：把 Agent 弹的选项推到手机端
 const wbQuestions = require('./wb_question_watcher');
+// 腾讯 Marvis 桥接：把 Marvis 会话/网关统一成同形任务模型
+const marvisBridge = require('./marvis-bridge');
 
 // ============================================================
 // 配置
@@ -415,6 +417,16 @@ function scanTasks() {
         console.error('[Tasks] 扫描失败:', err.message);
     }
 
+    // 合并腾讯 Marvis 任务（同一套视图模型，id 带 marvis: 前缀）
+    try {
+        const marvisTasks = marvisBridge.readTasks();
+        if (marvisTasks && marvisTasks.length) {
+            tasks.push.apply(tasks, marvisTasks);
+        }
+    } catch (err) {
+        console.error('[Tasks] Marvis 任务读取失败:', err.message);
+    }
+
     // 按更新时间倒序排序
     tasks.sort((a, b) => b.updatedAt - a.updatedAt);
     return tasks;
@@ -746,6 +758,76 @@ function asyncControl(ws, response, ack, work, resultCommand) {
 /**
  * 处理手机端发来的控制指令
  */
+/**
+ * 处理 Marvis 任务的远程指令（走 Xiaobao Gateway RPC）
+ */
+async function handleMarvisCommand(ws, response, taskId, command, params) {
+    const convId = String(taskId || '').replace(/^marvis:/, '').replace(/^marvis_/, '');
+    const finish = (msg, extra) => {
+        response.success = true;
+        response.message = msg;
+        Object.assign(response, extra || {});
+        console.log('[Marvis] 指令完成:', command, msg);
+        if (ws.readyState === 1) ws.send(JSON.stringify(response));
+    };
+    const fail = (msg) => {
+        response.success = false;
+        response.message = msg;
+        console.log('[Marvis] 指令失败:', command, msg);
+        if (ws.readyState === 1) ws.send(JSON.stringify(response));
+    };
+
+    switch (command) {
+        case 'send_message': {
+            const msg = params?.message || '';
+            if (!msg) return fail('消息内容为空');
+            // 当前版本 agent 侧尚未开放远程 chat.send；如实告知，不伪装成功
+            return fail('Marvis 暂不支持从手机发送消息（网关已确认 chat.send 未开放），可继续使用审批 / 选项回传功能');
+        }
+        case 'cancel':
+        case 'pause': {
+            // 当前 Marvis 网关未开放 chat.abort（合法 action 列表无此项，gateway.supports 亦为 false）。
+            // 如实告知，不伪装成功；审批/选项回传仍可用。
+            return fail('Marvis 暂不支持从手机中止任务（网关未开放 chat.abort），可继续使用审批/选项回传功能');
+        }
+        case 'select_option': {
+            // blocking.resolve: approval id 由 params 传入
+            const blockingId = params?.blockingId || params?.blocking_id || params?.id || '';
+            const decision = params?.decision || (params?.option === 'reject' ? 'rejected' : 'approved');
+            if (!blockingId) return fail('缺少 blocking_id（审批编号）');
+            response.message = `正在提交审批 ${String(blockingId).slice(0, 12)}…`;
+            response.phase = 'accepted';
+            if (ws.readyState === 1) ws.send(JSON.stringify(response));
+            return marvisBridge.rpc('blocking.resolve', {
+                blocking_id: blockingId,
+                decision: decision,
+                input: params?.input,
+            }, (err, data) => {
+                const out = {
+                    type: 'command_result', taskId, command: 'select_option',
+                    success: !err,
+                    message: err ? ('审批失败: ' + err.message) : ('审批已提交: ' + decision),
+                };
+                if (ws.readyState === 1) ws.send(JSON.stringify(out));
+            });
+        }
+        case 'approve':
+        case 'tool_calls.approve': {
+            const toolCallId = params?.toolCallId || params?.tool_call_id || '';
+            if (!toolCallId) return fail('缺少 tool_call_id');
+            return marvisBridge.rpc('tool_calls.approve', {
+                tool_call_id: toolCallId,
+                decision: params?.decision || 'approved',
+            }, (err, data) => err ? fail('工具审批失败: ' + err.message) : finish('工具审批已提交'));
+        }
+        case 'select_model': {
+            return fail('Marvis 暂不支持从手机切换模型（网关未开放设置接口）');
+        }
+        default:
+            return fail('Marvis 任务暂不支持指令: ' + command);
+    }
+}
+
 async function handleCommand(ws, data) {
     const { taskId, command, params } = data;
 
@@ -758,6 +840,11 @@ async function handleCommand(ws, data) {
         success: true,
         message: '',
     };
+
+    // ── 腾讯 Marvis 任务：走网关 RPC，不进入 WorkBuddy 分支 ──
+    if (marvisBridge.isMarvisTask(taskId)) {
+        return await handleMarvisCommand(ws, response, taskId, command, params);
+    }
 
     switch (command) {
         case 'send_message': {
@@ -983,6 +1070,15 @@ const server = http.createServer((req, res) => {
     if (!isPublic && token !== TOKEN) {
         res.writeHead(401);
         res.end(JSON.stringify({ error: 'Unauthorized' }));
+        return;
+    }
+
+    // GET /marvis/status - Marvis 网关连接状态（调试用）
+    if (req.method === 'GET' && req.url === '/marvis/status') {
+        marvisBridge.status((err, s) => {
+            res.writeHead(200);
+            res.end(JSON.stringify(err ? { error: err.message } : s));
+        });
         return;
     }
 

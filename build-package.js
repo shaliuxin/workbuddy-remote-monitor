@@ -21,7 +21,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 
 const ROOT = __dirname;
-const VERSION = '1.2.1';
+const VERSION = '1.2.2';
 const NODE_VERSION = '22.22.2';
 const TARGET = process.argv.includes('--mac') ? 'mac' : 'win';
 const NAME = TARGET === 'mac' ? `WorkBuddyMonitor-macos-${VERSION}` : `WorkBuddyMonitor-${VERSION}`;
@@ -37,6 +37,10 @@ const JS_FILES = [
     'wb_control.js',
     'wb_question_watcher.js',
     'wb_jsonl_writer.js',
+    // 腾讯 Marvis 支持（数据读取 + 网关协议 + 桥接）——1.2.2 起随包分发
+    'marvis-data.js',
+    'marvis-gateway.js',
+    'marvis-bridge.js',
 ];
 
 const FILES_WIN = [
@@ -83,7 +87,14 @@ const README_WIN = `WorkBuddy 任务监控 · Windows 便携版 ${VERSION}
 「UI 模拟注入」通道需要 Python；没有也能用 —— 自动改走 steer 协议。
 启动日志会打印 Python 检测结果。
 
-六、常见问题
+六、腾讯 Marvis 支持（v1.2.2 新增）
+服务端会自动读取本机 Marvis 的会话，映射成任务卡片（带紫色 Marvis 标签）
+并与 WorkBuddy 任务一起推送到手机。需要电脑上 Marvis 处于运行状态。
+可用：查看 Marvis 任务/对话、审批与选项回传（blocking.resolve / tool_calls.approve）。
+当前版本限制：Marvis 官方网关未开放远程发消息、中止、切换模型，
+对应操作在手机端会显示明确的「暂不支持」提示，不会伪装成功。
+
+七、常见问题
 · 双击 bat 一闪而过：在 cmd 里手动执行看报错。
 · 手机连不上：先在手机浏览器开 http://<电脑IP>:48787/token 验证网络。
 · Token 忘了：控制台点「重置 Token」，手机需重填。
@@ -125,7 +136,14 @@ const README_MAC = `WorkBuddy 任务监控 · macOS 便携版 ${VERSION}
   macOS 出于安全对跨进程环境读取有限制，若读取失败，
   这些指令会在手机端返回明确的「网关不可用」提示，不影响监控功能。
 
-五、常见问题
+五、腾讯 Marvis 支持（v1.2.2 新增）
+服务端会自动读取本机 Marvis 的会话，映射成任务卡片（带紫色 Marvis 标签）
+并与 WorkBuddy 任务一起推送到手机。需要电脑上 Marvis 处于运行状态。
+可用：查看 Marvis 任务/对话、审批与选项回传（blocking.resolve / tool_calls.approve）。
+当前版本限制：Marvis 官方网关未开放远程发消息、中止、切换模型，
+对应操作在手机端会显示明确的「暂不支持」提示，不会伪装成功。
+
+六、常见问题
 · 提示 runtime/node-arm64 无法执行：
   在终端执行  chmod +x runtime/node-arm64 runtime/node-x64
 · 手机连不上：先在手机浏览器开 http://<Mac的IP>:48787/token 验证网络。
@@ -158,6 +176,17 @@ function downloadMacNode(arch, outDir) {
     const url = `https://nodejs.org/dist/v${NODE_VERSION}/${fname}`;
     const tgz = path.join(DIST, fname);
     const tmp = path.join(DIST, `node-extract-${arch}`);
+    // 优先复用旧包里已抽取好的 node 二进制，避免重复联网下载（版本相同即可复用）
+    const destName = arch === 'arm64' ? 'node-arm64' : 'node-x64';
+    const prevDirs = fs.readdirSync(DIST).filter(d => /^WorkBuddyMonitor-macos-/.test(d)).sort().reverse();
+    for (const d of prevDirs) {
+        const cached = path.join(DIST, d, 'runtime', destName);
+        if (fs.existsSync(cached)) {
+            fs.copyFileSync(cached, path.join(outDir, destName));
+            console.log(`  ${destName} 复用自 ${d}/runtime（跳过下载）`);
+            return path.join(outDir, destName);
+        }
+    }
     if (fs.existsSync(tgz)) {
         console.log(`  ${fname} 已存在，跳过下载`);
     } else {

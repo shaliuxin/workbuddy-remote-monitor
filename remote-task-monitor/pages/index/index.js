@@ -19,7 +19,7 @@ const {
 
 Page({
     data: {
-        title: 'WorkBuddy 任务监控',
+        title: '远程AI任务管家',
         subtitle: '实时监控与操作本地任务',
 
         // 连接状态：connecting | connected | disconnected | error | unconfigured
@@ -47,6 +47,7 @@ Page({
         commandPanelOpen: false,
         selectedTaskId: '',
         selectedTaskTitle: '',
+        selectedTaskIsMarvis: false,
         availableCommands: [],
         commandButtons: [],
         sendingCommand: false,
@@ -77,6 +78,7 @@ Page({
         servers: [],
         activeServerId: '',
         serverPanelOpen: false,
+        settingsOpen: false,
         // 正在编辑/新增的服务器表单（null 表示未在编辑）
         editingServer: null,
 
@@ -311,62 +313,97 @@ Page({
     },
 
     /**
-     * 刷新：主动断开并重连，重新拉取任务快照
-     * 无论当前是已连接还是断开，都强制重新走一遍连接流程，
-     * 确保拿到服务端最新扫描到的任务状态。
+     * 刷新（顶部 ↻ / 重新连接 / 重试 共用）
+     *
+     * 已连接：轻量刷新——只重新拉一次 /tasks 快照，不打断 WebSocket。
+     *   旧实现无论是否连接都走「断开 + 重连」，会导致连接状态跳变到 connecting
+     *   （弹出全屏"正在连接"）、订阅反复解绑重绑、旧 socket 回调竞态，
+     *   是"点刷新卡在刷新中"的主因。服务端 /tasks 本身就是实时扫描的快照，
+     *   已连接时直接用它刷新即可，秒级完成。
+     * 未连接 / 失败：才走完整重连。
      */
-    handleRetry() {
+    async handleRetry() {
         if (this.data.refreshing) {
             return;
         }
         this.setData({ refreshing: true });
 
-        // 独立超时兜底：无论连接成功/失败/卡住，最多 10 秒后必定复位 refreshing
-        // 防止连接 Promise 未 resolve 导致界面永远停在“刷新中”
+        // 独立超时兜底：无论哪条路径卡住，最多 10 秒必定复位 refreshing
         clearTimeout(this._refreshGuard);
         this._refreshGuard = setTimeout(() => {
             if (this.data.refreshing) {
                 console.warn('[刷新] 超时兜底：强制复位 refreshing');
-                this.setData({
-                    refreshing: false,
-                    viewState: this.data.viewState === 'loading' ? 'error' : this.data.viewState,
-                    connectionState: this.data.connectionState === 'connecting' ? 'error' : this.data.connectionState,
-                    errorMessage: this.data.errorMessage || '刷新超时，请检查服务端与网络',
-                });
+                this.setData({ refreshing: false });
                 wx.showToast({ title: '刷新超时，请重试', icon: 'none', duration: 2500 });
             }
         }, 10000);
 
-        const finishRefresh = () => {
+        const finish = () => {
             clearTimeout(this._refreshGuard);
-            this.setData({ refreshing: false });
-            // 刷新后若处于错误状态，用 toast 明确告知原因（而不是默默停在错误页）
-            if (this.data.viewState === 'error') {
-                wx.showToast({
-                    title: (this.data.errorMessage || '刷新失败').slice(0, 30),
-                    icon: 'none',
-                    duration: 3000,
-                });
+            if (this.data.refreshing) {
+                this.setData({ refreshing: false });
             }
         };
 
-        // 主动断开旧连接（保留配置，稍后重连）
-        disconnect();
-        this.unsubscribe && this.unsubscribe();
-        this.offStatus && this.offStatus();
-        this.unsubscribe = null;
-        this.offStatus = null;
+        // 完整重连（断线或轻量刷新失败时降级走这里）
+        const doReconnect = async () => {
+            disconnect();
+            this.unsubscribe && this.unsubscribe();
+            this.offStatus && this.offStatus();
+            this.unsubscribe = null;
+            this.offStatus = null;
 
-        const config = loadConfig();
-        if (!config) {
-            finishRefresh();
-            this.bootstrap();
+            const config = loadConfig();
+            if (!config || !config.endpoint) {
+                finish();
+                this.setData({
+                    connectionState: 'unconfigured',
+                    connectionMessage: '尚未配置连接信息',
+                    hasConfig: false,
+                    viewState: 'loading',
+                });
+                return;
+            }
+
+            try {
+                await this.connectToWorkBuddy(config);
+            } catch (e) {
+                console.error('[刷新] 重连异常:', e && e.message);
+            }
+            finish();
+        };
+
+        // ── 已连接：轻量刷新，只重新拉快照，不断开 WebSocket ──
+        if (this.data.connectionState === 'connected') {
+            try {
+                const { data, error } = await fetchTasks();
+                if (!error) {
+                    finish();
+                    this.updateTasksOnly(data);
+                    wx.showToast({ title: '已刷新', icon: 'success', duration: 1200 });
+                    return;
+                }
+                // 网络层失败（请求失败/超时）可能是"假连接"——状态显示已连但链路已断，
+                // 降级为完整重连自愈；鉴权/HTTP 业务错误则直接提示，不无效重连。
+                if (error.code === 'REQUEST_FAILED' || error.code === 'TIMEOUT') {
+                    console.warn('[刷新] 轻量刷新网络失败，降级重连:', error.message);
+                    return await doReconnect();
+                }
+                finish();
+                wx.showToast({
+                    title: '刷新失败：' + String(error.message || '').slice(0, 16),
+                    icon: 'none',
+                    duration: 2500,
+                });
+            } catch (e) {
+                finish();
+                wx.showToast({ title: '刷新异常，请重试', icon: 'none', duration: 2000 });
+            }
             return;
         }
 
-        this.connectToWorkBuddy(config)
-            .then(() => finishRefresh())
-            .catch(() => finishRefresh());
+        // ── 未连接 / 连接失败：完整重连 ──
+        await doReconnect();
     },
 
     // ============================================================
@@ -752,7 +789,9 @@ Page({
             return;
         }
 
-        const availableCommands = this.getAvailableCommands(task.status);
+        const isMarvis = !!task.isMarvis;
+        const availableCommands = this.getAvailableCommands(task.status)
+            .filter((cmd) => !(isMarvis && ['pause', 'resume', 'cancel', 'retry', 'send_message'].indexOf(cmd) !== -1));
         const commandButtons = availableCommands.map((cmd) => ({
             command: cmd,
             text: this.getCommandText(cmd),
@@ -762,6 +801,7 @@ Page({
             commandPanelOpen: true,
             selectedTaskId: task.id,
             selectedTaskTitle: task.title,
+            selectedTaskIsMarvis: isMarvis,
             availableCommands: availableCommands,
             commandButtons: commandButtons,
             commandResult: '',
