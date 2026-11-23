@@ -1,5 +1,5 @@
 App({
     globalData: {
-        appName: 'WorkBuddy 任务监控',
+        appName: '远程AI任务管家',
     },
 });
