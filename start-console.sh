@@ -1,10 +1,10 @@
 #!/bin/bash
-# WorkBuddy Monitor Console (macOS) —— 启动控制台
+# Remote AI Task Manager (macOS) —— 启动控制台
 # 用法: bash start-console.sh
 cd "$(dirname "$0")"
 
 echo "========================================"
-echo "  WorkBuddy Monitor Console"
+echo "  Remote AI Task Manager"
 echo "========================================"
 
 # 1) 选择 Node 运行时：优先内置（按 CPU 架构），回退系统 node

@@ -1,12 +1,12 @@
 @echo off
-title WorkBuddy Console
+title Remote AI Task Manager
 cd /d "%~dp0"
 
 echo ========================================
-echo   WorkBuddy Monitor Console
+echo   Remote AI Task Manager
 echo ========================================
 
-REM ÓÅÏÈÊ¹ÓÃ·Ö·¢°ü×Ô´øµÄ Node ÔËÐÐÊ±£¬ÎÞÐèÄ¿±ê»úÆ÷°²×° Node
+REM ï¿½ï¿½ï¿½ï¿½Ê¹ï¿½Ã·Ö·ï¿½ï¿½ï¿½ï¿½Ô´ï¿½ï¿½ï¿½ Node ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä¿ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×° Node
 set "NODE=%~dp0runtime\node.exe"
 if exist "%NODE%" (
     echo [OK] using built-in runtime\node.exe
@@ -40,10 +40,10 @@ echo         monitor server keeps running after console closes
 echo         browser will open http://127.0.0.1:48790 automatically
 echo.
 
-REM ÏÈ´ò¿ªä¯ÀÀÆ÷£¨Ò³ÃæÃ¿ 2 Ãë×Ô¶¯ÖØÊÔ£¬·þÎñÒ»ÆðÀ´¾Í»áÏÔÊ¾Êý¾Ý£©
+REM ï¿½È´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò³ï¿½ï¿½Ã¿ 2 ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½ï¿½ï¿½Ô£ï¿½ï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½ï¿½ï¿½ï¿½Í»ï¿½ï¿½ï¿½Ê¾ï¿½ï¿½ï¿½Ý£ï¿½
 start "" http://127.0.0.1:48790
 
-REM µ±Ç°´°¿ÚÖ±½ÓÔËÐÐ¿ØÖÆÌ¨£¬²»ÓÃ start / cmd /k Ç¶Ì×£¬±ÜÃâÒýºÅ±»²ðÉ¢
+REM ï¿½ï¿½Ç°ï¿½ï¿½ï¿½ï¿½Ö±ï¿½ï¿½ï¿½ï¿½ï¿½Ð¿ï¿½ï¿½ï¿½Ì¨ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ start / cmd /k Ç¶ï¿½×£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Å±ï¿½ï¿½ï¿½É¢
 "%NODE%" wb-console-server.js
 
 echo.

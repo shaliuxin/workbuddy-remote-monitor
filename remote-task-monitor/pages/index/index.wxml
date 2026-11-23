@@ -2,7 +2,7 @@
     <!-- 顶部栏：标题 + 图标操作，文字按钮不再挤占标题宽度 -->
     <view class="topbar">
         <view class="topbar-text">
-            <text class="eyebrow">WORKBUDDY TASK MONITOR</text>
+            <text class="eyebrow">REMOTE AI TASK MANAGER</text>
             <text class="title">{{title}}</text>
             <text class="subtitle">{{subtitle}}</text>
         </view>
@@ -118,9 +118,15 @@
         <view class="task-list" wx:else>
             <view class="task-card" wx:for="{{visibleTasks}}" wx:key="id">
                 <view class="task-head">
-                    <text class="task-title">{{item.title}}</text>
+                    <view class="task-title-wrap">
+                        <!-- 来源图标：Marvis 紫色 M / WorkBuddy 蓝色 W -->
+                        <view class="source-icon source-icon-marvis" wx:if="{{item.isMarvis}}">M</view>
+                        <view class="source-icon source-icon-workbuddy" wx:else>W</view>
+                        <text class="task-title">{{item.title}}</text>
+                    </view>
                     <view class="head-badges">
-                        <view class="source-badge" wx:if="{{item.isMarvis}}">Marvis</view>
+                        <view class="source-badge source-badge-marvis" wx:if="{{item.isMarvis}}">Marvis</view>
+                        <view class="source-badge source-badge-workbuddy" wx:else>WorkBuddy</view>
                         <view class="badge {{item.statusCls}}">{{item.statusText}}</view>
                     </view>
                 </view>
@@ -308,14 +314,17 @@
             </view>
 
             <view class="field-group">
-                <text class="field-label">连接地址</text>
-                <input class="field-input" placeholder="ws://192.168.1.5:48787/ws" value="{{editingServer.endpoint}}" bindinput="handleEditingEndpointInput" />
-                <text class="field-tip">需以 ws:// 开头、以 /ws 结尾</text>
+                <text class="field-label">服务器地址</text>
+                <input class="field-input" placeholder="只填 IP，如 192.168.1.5" value="{{editingServer.endpoint}}" bindinput="handleEditingEndpointInput" />
+                <text class="field-tip">只需填 IP，协议、端口、后缀自动补齐；也兼容粘贴完整地址</text>
             </view>
 
             <view class="field-group">
                 <text class="field-label">Token</text>
-                <input class="field-input" password placeholder="启动时打印的 Token" value="{{editingServer.token}}" bindinput="handleEditingTokenInput" />
+                <view class="token-field">
+                    <input class="field-input token-field-input" password placeholder="启动时打印的 Token" value="{{editingServer.token}}" bindinput="handleEditingTokenInput" />
+                    <view class="token-clear" wx:if="{{editingServer.token}}" bindtap="handleClearEditingToken" hover-class="token-clear-hover">清除</view>
+                </view>
             </view>
 
             <text class="sheet-error" wx:if="{{settingsError !== ''}}">{{settingsError}}</text>

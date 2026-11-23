@@ -12,7 +12,11 @@
 - **按任务切模型**：在手机上为单个 WorkBuddy 任务切换模型
 - **腾讯 Marvis 支持**：把 Marvis 会话映射成同形任务卡（紫色 `Marvis` 徽章），支持阻塞问题选项回传与工具调用审批；发消息/中止/切模型官方网关未开放，界面会如实提示（详见下文）
 - **轻量刷新**：已连接时只拉一次 `/tasks` 快照，不断线重连，避免刷新卡死
-- **本机控制台**：Web 面板管理服务端（启动/停止/重启/重置 Token/日志实时查看）
+- **来源标识**：任务卡用蓝色 W（WorkBuddy）/ 紫色 M（Marvis）图标区分来源
+- **地址免拼**：小程序只需填服务器 IP，协议、端口、`/ws` 后缀自动补齐
+- **固定 Token**：可在控制台设置自定义固定 Token，长期稳定、手机端一次配置即可（v1.2.3 新增）
+- **本机控制台**：Web 面板管理服务端（启动/停止/重启/重置 Token/设置固定 Token/日志实时查看），启动控制台会自动拉起服务，并显示当前版本号
+- **全网段接入**：服务端监听 `0.0.0.0`，不拦截任何来源网段（含 VMware/WSL/VPN 等虚拟网卡）
 - **跨平台**：Windows 与 macOS 双支持
 
 ## 下载
@@ -21,8 +25,8 @@
 
 | 文件 | 平台 |
 |---|---|
-| `WorkBuddyMonitor-1.2.2.zip` | Windows（内置 Node 22.22.2） |
-| `WorkBuddyMonitor-macos-1.2.2.tar.gz` | macOS arm64 + x64（内置 Node 22.22.2） |
+| `WorkBuddyMonitor-1.2.3.zip` | Windows（内置 Node 22.22.2） |
+| `WorkBuddyMonitor-macos-1.2.3.tar.gz` | macOS arm64 + x64（内置 Node 22.22.2） |
 
 ## 快速上手
 
@@ -30,8 +34,17 @@
 2. 运行启动脚本：
    - Windows：双击 `start-console.bat`（脚本为 GBK 编码，cmd 原生兼容）
    - macOS：终端执行 `bash start-console.sh`（按 `uname -m` 自动选架构）
-3. 浏览器自动打开控制台 `http://127.0.0.1:48790`，点「启动」拉起监控服务端（监听 `0.0.0.0:48787`）
-4. 小程序里填 `ws://<电脑局域网IP>:48787/ws` + 控制台显示的 Token
+3. 浏览器打开控制台 `http://127.0.0.1:48790`——**启动控制台会自动拉起监控服务端**（监听 `0.0.0.0:48787`），无需再手动点「启动」
+4. 小程序里只需填**服务器 IP**（如 `192.168.1.5`）和控制台显示的 Token，协议/端口/后缀会自动补齐
+
+## 固定 Token（v1.2.3 新增）
+
+默认 Token 在首次启动随机生成并保存在 `~/.workbuddy/.monitor-token`。若希望 Token 长期不变（避免重置或文件丢失导致手机端断连），有两种方式：
+
+- **控制台设置**：在「连接信息」卡片里的「固定 Token」输入框填入自定义值，点右侧对勾保存；服务端会自动重启生效。清除后恢复自动生成模式。
+- **环境变量**：设置 `WB_MONITOR_TOKEN=<你的token>` 后启动，优先级最高。
+
+固定 Token 保存在 `~/.workbuddy/.monitor-token-custom`，不会被「重置 Token」按钮清除。如需恢复随机 Token，在控制台清除固定 Token 即可。
 
 ## 端口
 
@@ -74,6 +87,7 @@
 ## 目录结构
 
 ```
+├── version.js                    # 全局版本号（控制台显示 / 打包命名统一来源）
 ├── workbuddy-monitor-server.js   # 监控服务端（HTTP + WebSocket + 任务扫描 + 命令分发）
 ├── marvis-data.js                # 腾讯 Marvis 本地 SQLite 只读读取层
 ├── marvis-gateway.js             # Marvis 网关 WebSocket 客户端（自动提取/探测 token）

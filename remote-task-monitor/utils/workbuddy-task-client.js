@@ -965,7 +965,74 @@ function pad(value) {
     return value < 10 ? '0' + String(value) : String(value);
 }
 
+/**
+ * 把用户输入的服务器地址规范化为完整 WebSocket 地址。
+ * 用户只需填 IP（如 192.168.1.5），其余前缀/端口/后缀自动补齐。
+ * 同时兼容用户粘贴完整地址的情况。
+ * 规则：
+ *   - 纯 IP / 域名 / host:port        -> ws://host:48787/ws
+ *   - http(s)://host[:port][/...]     -> ws(s)://host[:48787]/ws
+ *   - ws(s)://host[:port][/...]       -> ws(s)://host[:48787]/ws
+ *   - 已带正确端口和 /ws 后缀的保持原样
+ * @param {string} raw 用户输入
+ * @returns {{endpoint: string, error: string}} 规范化结果
+ */
+function normalizeEndpoint(raw) {
+    let s = String(raw || '').trim();
+    if (!s) return { endpoint: '', error: '请输入服务器 IP 地址' };
+
+    // 去掉首尾空白和结尾斜杠
+    s = s.replace(/\s+/g, '');
+
+    let scheme = 'ws';
+    let rest = s;
+
+    // 解析协议前缀
+    const schemeMatch = s.match(/^(wss|ws|https|http):\/\/(.*)$/i);
+    if (schemeMatch) {
+        const p = schemeMatch[1].toLowerCase();
+        scheme = (p === 'wss' || p === 'https') ? 'wss' : 'ws';
+        rest = schemeMatch[2];
+    }
+
+    // 去掉路径部分（/ws 或其它），只留 host[:port]
+    rest = rest.split('/')[0];
+
+    // 处理 IPv6 方括号地址
+    let host = rest;
+    let port = '';
+    if (rest.startsWith('[')) {
+        const m = rest.match(/^\[([^\]]+)\](?::(\d+))?$/);
+        if (m) {
+            host = '[' + m[1] + ']';
+            port = m[2] || '';
+        }
+    } else {
+        const m = rest.match(/^([^:]+)(?::(\d+))?$/);
+        if (m) {
+            host = m[1];
+            port = m[2] || '';
+        }
+    }
+
+    if (!host) return { endpoint: '', error: '服务器地址格式不正确' };
+
+    // IPv4 合法性校验（纯数字点分形式）
+    if (/^[\d.]+$/.test(host)) {
+        const parts = host.split('.');
+        if (parts.length !== 4 || parts.some((x) => x === '' || Number(x) > 255 || !/^\d+$/.test(x))) {
+            return { endpoint: '', error: 'IP 地址格式不正确' };
+        }
+    }
+
+    // 用户未指定端口则补默认端口；指定了则沿用
+    const finalPort = port || '48787';
+    const endpoint = scheme + '://' + host + ':' + finalPort + '/ws';
+    return { endpoint, error: '' };
+}
+
 module.exports = {
+    normalizeEndpoint,
     connect,
     disconnect,
     subscribeTasks,

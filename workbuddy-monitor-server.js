@@ -81,11 +81,16 @@ function resolvePythonPath() {
 const CONFIG = {
     // 5 位冷门端口，避开 8787/8080 等常见开发端口，降低与其它服务冲突的概率
     port: 48787,
-    // 绑定 0.0.0.0 以便手机等局域网设备访问
-    // 注意：0.0.0.0 表示监听本机所有网卡，包括局域网 IP
-    host: '0.0.0.0',
+    // 绑定 0.0.0.0：监听本机所有网卡 / 所有网段（含局域网、虚拟网卡、Docker/WSL 等），
+    // 不对来源 IP / 网段做任何限制或拦截。手机只要能路由到本机该端口即可接入。
+    // 如需仅监听特定地址，可用环境变量 WB_MONITOR_HOST 覆盖（默认 0.0.0.0）。
+    host: process.env.WB_MONITOR_HOST || '0.0.0.0',
     tasksDir: path.join(os.homedir(), '.workbuddy', 'tasks'),
+    // 自动生成/重置的 token 文件（会被重置按钮覆盖）
     tokenFile: path.join(os.homedir(), '.workbuddy', '.monitor-token'),
+    // 用户自定义固定 token 文件：一旦存在且非空，优先级高于自动生成文件，
+    // 且不会被「重置 Token」删除。适合希望 token 长期稳定、手机端只需配置一次的场景。
+    customTokenFile: path.join(os.homedir(), '.workbuddy', '.monitor-token-custom'),
     // WorkBuddy 数据库：任务目录名即 session id，sessions.title 是你在 WorkBuddy
     // 里看到的真实任务名（如「移植 MaterialCraft 到鸿蒙系统」），
     // 而 tasks/<id>/<n>.json 里的 subject 只是单个步骤的名字。
@@ -134,6 +139,31 @@ const PUBLIC_ENDPOINTS = ['/token'];
 // ============================================================
 
 function loadOrCreateToken() {
+    // 优先级 1：环境变量 WB_MONITOR_TOKEN（最高，便于用环境变量固定 token）
+    const envToken = (process.env.WB_MONITOR_TOKEN || '').trim();
+    if (envToken) {
+        console.log('[Token] 使用环境变量 WB_MONITOR_TOKEN 指定的固定 token');
+        // 同步写入 tokenFile，方便控制台读取展示（但重置不会清除环境变量）
+        try { fs.writeFileSync(CONFIG.tokenFile, envToken, { mode: 0o600 }); } catch (e) {}
+        return envToken;
+    }
+
+    // 优先级 2：自定义固定 token 文件（用户在控制台设置，重置不会删除）
+    try {
+        if (fs.existsSync(CONFIG.customTokenFile)) {
+            const custom = fs.readFileSync(CONFIG.customTokenFile, 'utf8').trim();
+            if (custom) {
+                console.log('[Token] 使用自定义固定 token（.monitor-token-custom）');
+                // 同步到 tokenFile 供控制台展示
+                try { fs.writeFileSync(CONFIG.tokenFile, custom, { mode: 0o600 }); } catch (e) {}
+                return custom;
+            }
+        }
+    } catch (err) {
+        console.error('[Token] 读取自定义 token 失败:', err.message);
+    }
+
+    // 优先级 3：自动生成的 token 文件
     try {
         if (fs.existsSync(CONFIG.tokenFile)) {
             const token = fs.readFileSync(CONFIG.tokenFile, 'utf8').trim();
@@ -1298,9 +1328,10 @@ server.listen(CONFIG.port, CONFIG.host, () => {
     const primaryLanIp = lanIps[0]?.address || '未知';
 
     console.log('========================================');
-    console.log('WorkBuddy 任务监控服务端已启动');
+    console.log('远程AI任务管家 · 服务端已启动');
     console.log('========================================');
-    console.log(`本机监听: http://${CONFIG.host}:${CONFIG.port}`);
+    console.log(`版本:       v${require('./version')}`);
+    console.log(`本机监听: http://${CONFIG.host}:${CONFIG.port}（所有网卡/网段）`);
     console.log('');
     console.log('>>> 手机端需要填写的地址（与电脑连接同一 WiFi） <<<');
     console.log(`WebSocket: ws://${primaryLanIp}:${CONFIG.port}/ws`);

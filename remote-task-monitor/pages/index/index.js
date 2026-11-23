@@ -1,4 +1,5 @@
 const {
+    normalizeEndpoint,
     connect,
     disconnect,
     subscribeTasks,
@@ -446,25 +447,24 @@ Page({
             return;
         }
 
-        const endpoint = (this.data.settingsEndpoint || '').trim();
+        const rawEndpoint = (this.data.settingsEndpoint || '').trim();
         const token = (this.data.settingsToken || '').trim();
 
-        if (!endpoint) {
-            this.setData({ settingsError: '请填写连接地址' });
+        if (!rawEndpoint) {
+            this.setData({ settingsError: '请填写服务器 IP 地址' });
             return;
         }
-        if (!/^wss?:\/\//.test(endpoint)) {
-            this.setData({ settingsError: '地址需以 ws:// 或 wss:// 开头' });
-            return;
-        }
-        if (!/\/ws$/.test(endpoint)) {
-            this.setData({ settingsError: '地址需以 /ws 结尾（如 ws://192.168.1.5:48787/ws）' });
+        // 只需填 IP，前缀/端口/后缀由后台自动补齐
+        const normalized = normalizeEndpoint(rawEndpoint);
+        if (normalized.error) {
+            this.setData({ settingsError: normalized.error });
             return;
         }
         if (!token) {
             this.setData({ settingsError: '请填写 Token（在电脑端启动服务端时可见）' });
             return;
         }
+        const endpoint = normalized.endpoint;
 
         this.setData({ savingSettings: true, settingsError: '' });
 
@@ -650,15 +650,17 @@ Page({
         if (!edit) {
             return;
         }
-        const endpoint = (edit.endpoint || '').trim();
+        const rawEndpoint = (edit.endpoint || '').trim();
         const token = (edit.token || '').trim();
 
-        if (!endpoint) {
-            this.setData({ settingsError: '请填写连接地址' });
+        if (!rawEndpoint) {
+            this.setData({ settingsError: '请填写服务器 IP 地址' });
             return;
         }
-        if (!/^wss?:\/\//.test(endpoint) || !/\/ws$/.test(endpoint)) {
-            this.setData({ settingsError: '地址需为 ws:// 或 wss:// 开头且以 /ws 结尾' });
+        // 只需填 IP，前缀/端口/后缀由后台自动补齐
+        const normalized = normalizeEndpoint(rawEndpoint);
+        if (normalized.error) {
+            this.setData({ settingsError: normalized.error });
             return;
         }
         if (!token) {
@@ -669,7 +671,7 @@ Page({
         saveServer({
             id: edit.id || '',
             name: (edit.name || '').trim(),
-            endpoint: endpoint,
+            endpoint: normalized.endpoint,
             token: token,
         });
         this.setData({
@@ -677,6 +679,12 @@ Page({
             servers: loadServers(),
             settingsError: '',
         });
+        wx.showToast({ title: '已保存：' + normalized.endpoint, icon: 'none', duration: 2000 });
+    },
+
+    /** 一键清除编辑框里的 Token（避免长按逐字符删除长串） */
+    handleClearEditingToken() {
+        this.setData({ 'editingServer.token': '', settingsError: '' });
     },
 
     /** 删除一个服务器 */

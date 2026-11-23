@@ -399,6 +399,37 @@
     word-break: break-word;
 }
 
+/* 标题 + 来源图标同行；标题仍可换行、不被图标挤出 */
+.task-title-wrap {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: flex-start;
+    gap: 10rpx;
+}
+
+/* 来源图标：带品牌色的圆角方块，内嵌字母缩写 */
+.source-icon {
+    flex-shrink: 0;
+    width: 34rpx;
+    height: 34rpx;
+    border-radius: 9rpx;
+    font-size: 20rpx;
+    font-weight: 700;
+    line-height: 34rpx;
+    text-align: center;
+    color: #ffffff;
+    margin-top: 4rpx;
+}
+
+.source-icon-workbuddy {
+    background: linear-gradient(140deg, #3d8bff, #1769e0);
+}
+
+.source-icon-marvis {
+    background: linear-gradient(140deg, #a78bfa, #7148c8);
+}
+
 .head-badges {
     flex-shrink: 0;
     display: flex;
@@ -413,6 +444,14 @@
     font-size: 20rpx;
     font-weight: 600;
     line-height: 1.5;
+}
+
+.source-badge-workbuddy {
+    background: #eaf2ff;
+    color: #1769e0;
+}
+
+.source-badge-marvis {
     background: #f3eefe;
     color: #7148c8;
 }
@@ -1080,6 +1119,35 @@
     font-size: 21rpx;
     color: #9aa0a9;
     line-height: 1.5;
+}
+
+/* Token 输入框 + 一键清除 */
+.token-field {
+    display: flex;
+    align-items: center;
+    gap: 12rpx;
+}
+
+.token-field-input {
+    flex: 1;
+    min-width: 0;
+}
+
+.token-clear {
+    flex-shrink: 0;
+    height: 80rpx;
+    padding: 0 24rpx;
+    border-radius: 14rpx;
+    background: #f2f3f5;
+    color: #6b7280;
+    font-size: 25rpx;
+    line-height: 80rpx;
+    text-align: center;
+}
+
+.token-clear-hover {
+    background: #e5e7eb;
+    color: #374151;
 }
 
 .sheet-error {

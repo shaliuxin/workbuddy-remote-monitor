@@ -21,7 +21,8 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 
 const ROOT = __dirname;
-const VERSION = '1.2.2';
+// 版本号统一从 version.js 读取，避免多处维护不一致
+const VERSION = require('./version');
 const NODE_VERSION = '22.22.2';
 const TARGET = process.argv.includes('--mac') ? 'mac' : 'win';
 const NAME = TARGET === 'mac' ? `WorkBuddyMonitor-macos-${VERSION}` : `WorkBuddyMonitor-${VERSION}`;
@@ -29,6 +30,7 @@ const DIST = path.join(ROOT, 'dist');
 const STAGE = path.join(DIST, NAME);
 
 const JS_FILES = [
+    'version.js',
     'workbuddy-monitor-server.js',
     'wb-console-server.js',
     'wb-console.html',
@@ -58,23 +60,27 @@ const FILES_MAC = [
     'stop-monitor-server.sh',
 ];
 
-const README_WIN = `WorkBuddy 任务监控 · Windows 便携版 ${VERSION}
+const README_WIN = `远程AI任务管家 · Windows 便携版 ${VERSION}
 ================================================
 
 这是一个「解压即用」的自包含分发包，目标电脑无需安装 Node.js，
 也无需联网执行 npm install（Node 运行时和依赖 ws 已全部打进包里）。
 
-一、最快上手（三步）
+一、最快上手（两步）
 1. 把整个文件夹解压到任意位置（路径不要含特殊符号）。
-2. 双击「start-console.bat」，会弹出控制台窗口并自动打开浏览器页面。
-3. 在网页里点「启动」，服务端跑起来（监听 48787 端口）。
+2. 双击「start-console.bat」，控制台启动后会自动拉起监控服务端（监听 48787），无需再手动点「启动」。
 
-网页上会显示：服务端地址、Token、小程序连接串（一键复制）、
+网页上会显示：当前版本、服务端地址、Token、小程序连接串（一键复制）、
 手机在线数、任务数、活跃会话、运行时长、实时日志。
 
 二、手机端接入
 1. 手机与电脑连同一个 WiFi，防火墙放行 TCP 48787（首次弹窗允许即可）。
-2. 小程序「设置」里填入网页显示的服务端地址与 Token。
+2. 小程序「设置」里只需填服务器 IP（如 192.168.1.5）和网页显示的 Token，
+   协议、端口、后缀会自动补齐。
+
+二之二、固定 Token（可选）
+在网页「连接信息」里的「固定 Token」输入框填入自定义值并点右侧对勾，
+Token 将长期固定、手机端一次配置即可；清除后恢复自动生成。
 
 三、端口
 · 监控服务端：48787（0.0.0.0）
@@ -100,21 +106,24 @@ const README_WIN = `WorkBuddy 任务监控 · Windows 便携版 ${VERSION}
 · Token 忘了：控制台点「重置 Token」，手机需重填。
 `;
 
-const README_MAC = `WorkBuddy 任务监控 · macOS 便携版 ${VERSION}
+const README_MAC = `远程AI任务管家 · macOS 便携版 ${VERSION}
 ================================================
 
 这是一个「解压即用」的自包含分发包：内置 arm64 + x64 双架构官方 Node
 运行时，目标 Mac 无需安装 Node.js，也无需联网安装依赖。
 
-一、最快上手（三步）
+一、最快上手（两步）
 1. 解压到任意位置，打开「终端」，进入该文件夹：
        cd <解压路径>/WorkBuddyMonitor-macos-${VERSION}
-2. 启动控制台（会自动打开浏览器管理页面）：
+2. 启动控制台（会自动打开浏览器页面，并自动拉起服务端监听 48787）：
        bash start-console.sh
-3. 在网页里点「启动」，服务端跑起来（监听 48787 端口）。
 
-网页上会显示：服务端地址、Token、小程序连接串（一键复制）、
+网页上会显示：当前版本、服务端地址、Token、小程序连接串（一键复制）、
 手机在线数、任务数、活跃会话、运行时长、实时日志。
+
+二之二、固定 Token（可选）
+在网页「连接信息」里的「固定 Token」输入框填入自定义值并点右侧对勾，
+Token 将长期固定、手机端一次配置即可；清除后恢复自动生成。
 
 二、手机端接入
 1. 手机与 Mac 连同一个 WiFi。首次启动 macOS 可能弹「是否允许接受入站连接」，
@@ -212,7 +221,7 @@ function downloadMacNode(arch, outDir) {
 }
 
 (function main() {
-    console.log(`=== 打包 WorkBuddy 监控便携版 ${VERSION}（${TARGET === 'mac' ? 'macOS' : 'Windows'}） ===`);
+    console.log(`=== 打包 远程AI任务管家 便携版 ${VERSION}（${TARGET === 'mac' ? 'macOS' : 'Windows'}） ===`);
 
     rmrf(STAGE);
     fs.mkdirSync(STAGE, { recursive: true });

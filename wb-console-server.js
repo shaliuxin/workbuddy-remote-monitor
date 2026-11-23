@@ -18,6 +18,8 @@ const path = require('path');
 const os = require('os');
 const { execFile, spawn } = require('child_process');
 
+const VERSION = require('./version');
+
 const ROOT = __dirname;
 const MONITOR_SCRIPT = path.join(ROOT, 'workbuddy-monitor-server.js');
 const LOG_OUT = path.join(ROOT, 'monitor-out.log');
@@ -26,6 +28,7 @@ const LOG_OUT_PREV = path.join(ROOT, 'monitor-out.prev.log');
 const LOG_ERR_PREV = path.join(ROOT, 'monitor-err.prev.log');
 const STATE_FILE = path.join(ROOT, '.monitor-state.json');
 const TOKEN_FILE = path.join(os.homedir(), '.workbuddy', '.monitor-token');
+const CUSTOM_TOKEN_FILE = path.join(os.homedir(), '.workbuddy', '.monitor-token-custom');
 const TASKS_DIR = path.join(os.homedir(), '.workbuddy', 'tasks');
 
 const MONITOR_PORT = 48787;
@@ -68,15 +71,18 @@ function maskToken(t) {
     return t.slice(0, 8) + '••••••••••••••••' + t.slice(-6);
 }
 
-/** 局域网 IPv4，过滤虚拟网卡 */
+/** 本机所有可用 IPv4 网段（含虚拟网卡/WSL/Tailscale 等）。
+ *  服务端监听 0.0.0.0，不拦截任何来源网段，因此这里全部列出，
+ *  让用户知道从哪个地址都能接入；仅去重，不按网卡名过滤。 */
 function getAddresses() {
-    const skip = /(vEthernet|VMware|VirtualBox|Hyper-V|WSL|Loopback|Bluetooth|TAP|Tailscale|ZeroTier)/i;
     const list = [];
+    const seen = new Set();
     const ifaces = os.networkInterfaces();
     for (const name of Object.keys(ifaces)) {
-        if (skip.test(name)) continue;
         for (const info of ifaces[name] || []) {
             if (info.family !== 'IPv4' || info.internal) continue;
+            if (seen.has(info.address)) continue;
+            seen.add(info.address);
             list.push({ name, address: info.address });
         }
     }
@@ -293,15 +299,52 @@ async function doRestart() {
 }
 
 async function doResetToken() {
+    const hasCustom = readCustomToken() !== '';
     const stopped = await doStop();
     await sleep(300);
     let removed = false;
     try { if (fs.existsSync(TOKEN_FILE)) { fs.unlinkSync(TOKEN_FILE); removed = true; } } catch (e) {}
     const started = await doStart();
+    const tail = hasCustom
+        ? '（检测到自定义固定 Token，重启后仍会使用固定值；如需改成随机 Token，请先清除自定义 Token）'
+        : '（新 Token 已生成）';
     return {
         ok: started.ok,
-        message: `${stopped.message}；${removed ? '已删除旧 Token；' : ''}${started.message}（新 Token 已生成）`,
+        message: `${stopped.message}；${removed ? '已删除旧 Token；' : ''}${started.message}${tail}`,
     };
+}
+
+/** 设置自定义固定 token：写入 .monitor-token-custom 并重启服务使其生效。
+ *  传空字符串表示清除自定义 token（恢复自动生成模式）。 */
+async function doSetToken(token) {
+    const value = String(token || '').trim();
+    try {
+        if (value) {
+            fs.writeFileSync(CUSTOM_TOKEN_FILE, value, { mode: 0o600 });
+        } else {
+            // 清除自定义 token：同时删除自定义文件和 tokenFile，
+            // 否则服务端重启会回退读到 tokenFile 里残留的旧自定义值，无法真正恢复随机 token。
+            if (fs.existsSync(CUSTOM_TOKEN_FILE)) fs.unlinkSync(CUSTOM_TOKEN_FILE);
+            if (fs.existsSync(TOKEN_FILE)) fs.unlinkSync(TOKEN_FILE);
+        }
+    } catch (e) {
+        return { ok: false, message: '写入自定义 Token 失败: ' + e.message };
+    }
+
+    const restarted = await doRestart();
+    return {
+        ok: restarted.ok,
+        message: value
+            ? `已设置固定 Token，服务端已重启生效。手机端需用新 Token 重新连接。${restarted.message}`
+            : `已清除固定 Token，恢复自动生成模式。${restarted.message}`,
+    };
+}
+
+function readCustomToken() {
+    try {
+        if (!fs.existsSync(CUSTOM_TOKEN_FILE)) return '';
+        return fs.readFileSync(CUSTOM_TOKEN_FILE, 'utf8').trim();
+    } catch (e) { return ''; }
 }
 
 // ------------------------------------------------------------
@@ -327,6 +370,7 @@ async function buildState() {
             port: CONSOLE_PORT,
             uptimeSec: Math.round(process.uptime()),
             node: process.version,
+            version: VERSION,
         },
         monitor: {
             running,
@@ -353,6 +397,7 @@ async function buildState() {
             value: token,
             masked: maskToken(token),
             exists: !!token,
+            custom: !!readCustomToken(),   // 是否为自定义固定 token
         },
     };
 }
@@ -417,6 +462,10 @@ const handler = async (req, res) => {
         if (req.method === 'POST' && p === '/api/token/reset') {
             return sendJson(res, 200, await doResetToken());
         }
+        if (req.method === 'POST' && p === '/api/token/set') {
+            const body = await readBody(req);
+            return sendJson(res, 200, await doSetToken(body && body.token));
+        }
         if (req.method === 'POST' && p === '/api/logs/clear') {
             clearLogs();
             return sendJson(res, 200, { ok: true, message: '日志已清空' });
@@ -465,10 +514,21 @@ function listen(port) {
     }
     const url = `http://${CONSOLE_HOST}:${CONSOLE_PORT}`;
     console.log('========================================');
-    console.log(' WorkBuddy 监控 · 控制台');
+    console.log(' 远程AI任务管家 · 控制台  v' + VERSION);
     console.log('========================================');
     console.log(` 打开: ${url}`);
     console.log(` 管理: 监控服务端 ${MONITOR_PORT} 端口`);
     console.log(' 关闭此窗口即停止控制台（不影响监控服务端）');
+    console.log('');
+
+    // 控制台启动时自动拉起监控服务端（若已在运行则跳过）
+    try {
+        const r = await doStart();
+        console.log(r.already
+            ? `[自动启动] 监控服务端已在运行（PID ${r.pid}）`
+            : `[自动启动] ${r.message}`);
+    } catch (e) {
+        console.error('[自动启动] 失败:', e && e.message);
+    }
     console.log('');
 })();

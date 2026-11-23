@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WorkBuddy 监控 · 控制台</title>
+<title>远程AI任务管家 · 控制台</title>
 <style>
 :root{
   --bg:#0b0f17;
@@ -50,6 +50,7 @@ header{display:flex;align-items:center;gap:14px;margin-bottom:22px;flex-wrap:wra
 }
 .logo svg{width:22px;height:22px;stroke:#04241a}
 .title h1{font-size:17px;font-weight:650;letter-spacing:.2px}
+.ver{display:inline-block;margin-left:8px;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;font-family:var(--mono);color:var(--acc);background:rgba(61,220,151,.12);border:1px solid rgba(61,220,151,.28);vertical-align:middle}
 .title p{font-size:12px;color:var(--txt-3);margin-top:1px}
 .spacer{flex:1}
 .pill{
@@ -104,6 +105,11 @@ header{display:flex;align-items:center;gap:14px;margin-bottom:22px;flex-wrap:wra
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--txt);
 }
 .row .val.muted{color:var(--txt-3)}
+.token-input{
+  flex:1;min-width:0;background:transparent;border:0;outline:0;
+  font-family:var(--mono);font-size:13px;color:var(--txt);
+}
+.token-input::placeholder{color:var(--txt-3)}
 .iconbtn{
   flex:0 0 auto;width:26px;height:26px;border-radius:7px;border:1px solid var(--line-2);
   background:#162030;color:var(--txt-2);cursor:pointer;display:grid;place-items:center;
@@ -230,7 +236,7 @@ header{display:flex;align-items:center;gap:14px;margin-bottom:22px;flex-wrap:wra
       </svg>
     </div>
     <div class="title">
-      <h1>WorkBuddy 监控服务端 · 控制台</h1>
+      <h1>远程AI任务管家 · 控制台 <span class="ver" id="verBadge">v—</span></h1>
       <p>手机端远程查看与控制任务 · 本机管理面板</p>
     </div>
     <div class="spacer"></div>
@@ -267,6 +273,17 @@ header{display:flex;align-items:center;gap:14px;margin-bottom:22px;flex-wrap:wra
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
             </button>
           </div>
+        </div>
+
+        <div class="field">
+          <div class="label">固定 Token <span class="tag blue" id="customTag">可选</span></div>
+          <div class="row">
+            <input class="token-input" id="customTokenInput" type="text" placeholder="输入自定义固定 Token（留空则清除）" autocomplete="off" spellcheck="false">
+            <button class="iconbtn" id="btnSetToken" title="应用固定 Token 并重启服务">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+            </button>
+          </div>
+          <div class="hint" style="margin-top:6px">设置后 Token 长期固定，重置也不会改变；手机端配置一次即可。清除后恢复自动生成。</div>
         </div>
 
         <div class="field">
@@ -355,7 +372,7 @@ header{display:flex;align-items:center;gap:14px;margin-bottom:22px;flex-wrap:wra
     </div>
   </div>
 
-  <div class="foot">WorkBuddy Monitor Console · 本地管理面板</div>
+  <div class="foot">Remote AI Task Manager · 本地管理面板 · <span id="verFoot">v—</span></div>
 </div>
 
 <div id="toast"></div>
@@ -410,6 +427,22 @@ function fmtUptime(sec) {
 function render(s) {
   state = s;
   const m = s.monitor;
+
+  // version
+  if (s.console && s.console.version) {
+    $('verBadge').textContent = 'v' + s.console.version;
+    $('verFoot').textContent = 'v' + s.console.version;
+  }
+
+  // custom token 状态：仅在值变化时同步输入框，避免覆盖用户正在输入的内容
+  const isCustom = !!(s.token && s.token.custom);
+  const ctInput = $('customTokenInput');
+  $('customTag').textContent = isCustom ? '已固定' : '可选';
+  $('customTag').className = 'tag ' + (isCustom ? 'blue' : '');
+  if (ctInput && document.activeElement !== ctInput && ctInput.dataset.synced !== String(isCustom)) {
+    ctInput.value = isCustom ? (s.token.value || '') : '';
+    ctInput.dataset.synced = String(isCustom);
+  }
 
   // status pill
   const pill = $('statusPill');
@@ -466,8 +499,10 @@ function render(s) {
 }
 
 // ---------- api ----------
-async function api(path, method) {
-  const res = await fetch(path, { method: method || 'GET', headers: { 'Content-Type': 'application/json' } });
+async function api(path, method, body) {
+  const opt = { method: method || 'GET', headers: { 'Content-Type': 'application/json' } };
+  if (body !== undefined) opt.body = JSON.stringify(body);
+  const res = await fetch(path, opt);
   return res.json();
 }
 
@@ -545,6 +580,29 @@ $('btnStart').addEventListener('click', () => action('btnStart', '/api/start'));
 $('btnStop').addEventListener('click', () => action('btnStop', '/api/stop', '确认停止监控服务端？手机将立即断开连接。'));
 $('btnRestart').addEventListener('click', () => action('btnRestart', '/api/restart', '确认重启监控服务端？手机会短暂断开后自动重连。'));
 $('btnResetToken').addEventListener('click', () => action('btnResetToken', '/api/token/reset', '重置 Token 会使当前所有手机连接失效，需要在手机上重新填写新 Token。继续？'));
+
+$('btnSetToken').addEventListener('click', async () => {
+  if (busy) return;
+  const val = ($('customTokenInput').value || '').trim();
+  const clearing = val === '';
+  if (!clearing && !confirm('设置固定 Token 后服务端会重启，手机端需用该 Token 重新连接。继续？')) return;
+  if (clearing && !confirm('清除固定 Token 并恢复自动生成？手机端需用新的随机 Token 重新连接。')) return;
+  busy = true;
+  try {
+    const r = await api('/api/token/set', 'POST', { token: val });
+    toast(r.message || (r.ok ? '完成' : '失败'), r.ok ? 'ok' : 'err');
+    if (r.ok) {
+      $('customTokenInput').dataset.synced = '';  // 强制下次 render 同步
+      if (!clearing) tokenShown = true;             // 设置后直接显示新 token，便于复制
+    }
+  } catch (e) {
+    toast('请求失败: ' + e.message, 'err');
+  } finally {
+    busy = false;
+    await refresh();
+    await loadLog();
+  }
+});
 
 document.querySelectorAll('.seg button').forEach((b) => {
   b.addEventListener('click', () => {
