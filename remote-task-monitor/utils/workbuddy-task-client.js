@@ -1025,14 +1025,81 @@ function normalizeEndpoint(raw) {
         }
     }
 
-    // 用户未指定端口则补默认端口；指定了则沿用
-    const finalPort = port || '48787';
-    const endpoint = scheme + '://' + host + ':' + finalPort + '/ws';
+    // 用户未指定端口时：ws 明文补 48787；wss 则交给反代/域名走默认 443，不强行加端口
+    const finalPort = port || (scheme === 'ws' ? '48787' : '');
+    const hostPart = finalPort ? host + ':' + finalPort : host;
+    const endpoint = scheme + '://' + hostPart + '/ws';
     return { endpoint, error: '' };
+}
+
+/**
+ * 从 WebSocket 地址里取出 http(s) 基地址，用于 HTTP 探活。
+ *   ws://1.2.3.4:48787/ws  -> http://1.2.3.4:48787
+ *   wss://a.com/ws         -> https://a.com
+ * @param {string} endpoint
+ * @returns {string} 基地址；解析失败返回空串
+ */
+function toHttpBase(endpoint) {
+    const s = String(endpoint || '').trim();
+    if (!s) return '';
+    const converted = s.replace(/^wss:\/\//i, 'https://').replace(/^ws:\/\//i, 'http://');
+    const m = converted.match(/^(https?:\/\/[^/?#]+)/i);
+    return m ? m[1] : '';
+}
+
+/**
+ * 只显示 host:port，便于用户核对实际连接的地址（不含 token）。
+ * @param {string} endpoint
+ * @returns {string}
+ */
+function describeEndpointHost(endpoint) {
+    const base = toHttpBase(endpoint);
+    return base ? base.replace(/^https?:\/\//i, '') : '';
+}
+
+/**
+ * 用微信自己的网络栈访问同地址的 /status，判断「网络是否可达」。
+ * 这是区分「链路不通」与「WebSocket 被平台拦截」的关键探针：
+ *   - WS 超时 + HTTP 探活成功  => 网络通，问题在 WebSocket 协议/握手
+ *   - WS 超时 + HTTP 探活失败  => 微信的流量根本没到电脑（VPN 分流、防火墙、不在同一网络）
+ * @param {string} endpoint WebSocket 地址
+ * @param {string} token 访问令牌
+ * @param {number} [timeoutMs=4000]
+ * @returns {Promise<{ok: boolean, statusCode?: number, blocked?: boolean, message?: string}>}
+ */
+function probeHttpEndpoint(endpoint, token, timeoutMs) {
+    return new Promise((resolve) => {
+        const base = toHttpBase(endpoint);
+        if (!base) {
+            resolve({ ok: false, message: '地址无法解析' });
+            return;
+        }
+        const header = {};
+        if (token) header.Authorization = 'Bearer ' + token;
+        wx.request({
+            url: base + '/status',
+            method: 'GET',
+            timeout: timeoutMs || 4000,
+            header: header,
+            success: (res) => {
+                resolve({ ok: true, statusCode: res && res.statusCode });
+            },
+            fail: (err) => {
+                const msg = (err && err.errMsg) || '请求失败';
+                // 微信域名策略拦截（未开调试 / 未配置合法域名）
+                const blocked = msg.indexOf('domain list') !== -1
+                    || msg.indexOf('not in domain') !== -1;
+                resolve({ ok: false, blocked: blocked, message: msg });
+            },
+        });
+    });
 }
 
 module.exports = {
     normalizeEndpoint,
+    toHttpBase,
+    describeEndpointHost,
+    probeHttpEndpoint,
     connect,
     disconnect,
     subscribeTasks,

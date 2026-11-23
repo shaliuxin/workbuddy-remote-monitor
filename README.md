@@ -2,7 +2,7 @@
 
 从微信小程序远程查看并控制电脑端 WorkBuddy 与腾讯 Marvis 任务的服务端 + 控制台 + 小程序全套代码。
 
-> 显示名称与小程序保持一致为「远程AI任务管家」；仓库地址 `shaliuxin/workbuddy-remote-monitor` 保持不变，以免已有分享链接失效。
+> 仓库与显示名称已统一为 `remote-ai-task-manager` / 「远程AI任务管家」；旧地址 `shaliuxin/workbuddy-remote-monitor` 会自动 301 跳转到新仓库，已有链接不会失效。
 
 ## 功能
 
@@ -21,7 +21,7 @@
 
 ## 下载
 
-编译好的自包含分发包（内置 Node 运行时，目标电脑无需装 Node、无需 npm install）见 [Releases](https://github.com/shaliuxin/workbuddy-remote-monitor/releases)：
+编译好的自包含分发包（内置 Node 运行时，目标电脑无需装 Node、无需 npm install）见 [Releases](https://github.com/shaliuxin/remote-ai-task-manager/releases)：
 
 | 文件 | 平台 |
 |---|---|

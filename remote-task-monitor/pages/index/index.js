@@ -1,5 +1,7 @@
 const {
     normalizeEndpoint,
+    describeEndpointHost,
+    probeHttpEndpoint,
     connect,
     disconnect,
     subscribeTasks,
@@ -156,11 +158,23 @@ Page({
         });
 
         if (error || !conn || !conn.connected) {
+            // 连接失败时用微信自己的网络再探一次同地址的 /status，
+            // 以便区分「网络/链路不通」与「WebSocket 被平台或中间设备拦截」。
+            let probe = null;
+            const probeWorthy = !error
+                || error.code === 'TIMEOUT'
+                || error.code === 'CONNECT_FAILED'
+                || error.code === 'CLOSED_BEFORE_OPEN';
+            if (probeWorthy) {
+                this.setData({ connectionMessage: '正在诊断连接问题...' });
+                probe = await probeHttpEndpoint(config.endpoint, config.token || '', 4000);
+            }
+
             this.setData({
                 connectionState: 'error',
                 connectionMessage: '无法连接到 WorkBuddy 本地服务',
                 viewState: 'error',
-                errorMessage: describeConnectError(error, config),
+                errorMessage: describeConnectError(error, config, probe),
             });
             return;
         }
@@ -1116,21 +1130,37 @@ Page({
     },
 });
 
-function describeConnectError(error, config) {
+function describeConnectError(error, config, probe) {
     const endpoint = (config && config.endpoint) || '';
+    const host = describeEndpointHost(endpoint) || '未知地址';
 
     if (!error) {
         return '连接失败';
     }
     if (error.code === 'TIMEOUT') {
-        return '连接超时。请确认：1) 电脑端服务已启动；2) 手机与电脑连同一 WiFi；3) 地址和端口（48787）正确';
+        let msg = '连接超时：' + host + ' 在 8 秒内没有完成 WebSocket 握手。';
+        if (probe && probe.ok) {
+            msg += '但用微信自身的网络访问 http://' + host + '/status 是成功的（HTTP '
+                + probe.statusCode + '），说明网络是通的，卡在 WebSocket 握手——'
+                + '微信要求 wss://，明文 ws:// 在真机上常被平台直接拦掉，需改用 wss:// + 已备案域名。';
+        } else if (probe && probe.blocked) {
+            msg += 'HTTP 探活被微信域名策略拦下（' + probe.message + '），'
+                + '说明「不校验合法域名」没有生效：请用开发版并在手机上打开调试后重启小程序。';
+        } else if (probe) {
+            msg += '用微信自身的网络访问 http://' + host + '/status 也失败（' + probe.message + '），'
+                + '说明微信的流量没有到达电脑：请确认手机已接入同一虚拟网络、'
+                + 'VPN/穿透客户端未做「分应用代理/智能分流」，并已放行 48787 端口。';
+        } else {
+            msg += '请确认电脑端服务已启动、手机与电脑处于同一网络、地址端口（48787）正确。';
+        }
+        return msg;
     }
     if (error.code === 'UNAUTHORIZED') {
         return 'Token 无效，请在电脑端重启服务端后重新复制 Token';
     }
     if (error.code === 'CLOSED_BEFORE_OPEN') {
         return (
-            '连上后被立即断开。最常见原因是微信平台拦截了 ws:// 明文连接：' +
+            '连上后被立即断开（' + host + '）。最常见原因是微信平台拦截了 ws:// 明文连接：' +
             '请在小程序后台配置 socket 合法域名，' +
             '或用开发者工具并勾选「详情 → 本地设置 → 不校验合法域名、web-view、TLS 版本以及 HTTPS 证书」'
         );
@@ -1138,9 +1168,9 @@ function describeConnectError(error, config) {
     if (error.code === 'CONNECT_FAILED') {
         const hint =
             endpoint.indexOf('0.0.0.0') !== -1
-                ? '地址里是 0.0.0.0，手机无法访问，请改成电脑的局域网 IP（服务端启动日志里有）'
-                : '请检查电脑防火墙是否放行 48787 端口，以及手机是否与电脑同一 WiFi';
-        return '无法建立连接：' + (error.message || '') + '。' + hint;
+                ? '地址里是 0.0.0.0，手机无法访问，请改成电脑的实际 IP（服务端启动日志里有）'
+                : '请检查电脑防火墙是否放行 48787 端口，以及手机是否与电脑处于同一网络';
+        return '无法建立连接：' + host + ' · ' + (error.message || '') + '。' + hint;
     }
     return error.message || '连接失败';
 }
